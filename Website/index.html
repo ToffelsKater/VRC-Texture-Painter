@@ -3,219 +3,343 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VCC Listing</title>
-  <script type="module" src="https://unpkg.com/@fluentui/web-components@2.6.1"></script>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="icon" href="./favicon.ico">
+  {{~ latest = packages | array.first ~}}
+  <title>VRC Texture Painter · Paint your avatar in Unity</title>
+  <meta name="description" content="Blender style texture painting for VRChat avatars, right in the Unity Scene view. Brushes follow the model across UV seams, mirrored UVs and multiple UV channels.">
+  <meta name="theme-color" content="#15121c" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f2ec" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="VRC Texture Painter">
+  <meta property="og:description" content="Paint your VRChat avatar right in Unity, the way Blender's Texture Paint mode works.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap">
+  <link rel="stylesheet" href="site.css">
 </head>
-<body>
-  <div class="col align-items-center content">
-    <div id="listingInfo" class="col mb-4 w-100 align-items-center">
-      {{~ if listingInfo.BannerImage; ~}}
-        <div class="bannerImage" style="background-image: url({{ listingInfo.BannerImageUrl }})"></div>
-      {{~ end; ~}}
-      <h1>
-        {{~ listingInfo.Name ~}}
-      </h1>
-      {{~ if listingInfo.Description; ~}}
-        <div class="caption1 mb-2">{{ listingInfo.Description }}</div>
-      {{~ end; ~}}
-      <div class="col align-items-center">
-        {{~ if listingInfo.Author.Email; ~}}
-        <fluent-tooltip id="publishedByTooltip" anchor="publishedByText">
-          {{ listingInfo.Author.Email }}
-        </fluent-tooltip>
-        {{~ end; ~}}
-        <div class="caption1 mb-2" id="publishedByText">Published by <a href="{{listingInfo.Author.Url}}" target="_blank">{{ listingInfo.Author.Name }}</a></div>
-        {{~ if listingInfo.InfoLink.Url ~}}
-          <div class="caption1" id="publishedByText">
-            <a href="{{listingInfo.InfoLink.Url}}" target="_blank">{{ if listingInfo.InfoLink.Text; listingInfo.InfoLink.Text; else; "Lean More"; end; }}</a>
-          </div>
-        {{~ end; ~}}
-      </div>
-    </div>
-    <div class="addToVccBlock mt-4 row align-items-center">
-      <fluent-text-field aria-readonly="true" id="vccUrlField" class="vccUrlField" readonly value="{{ listingInfo.Url }}">
-      </fluent-text-field>
-      <fluent-button appearance="accent" class="ms-2" id="vccAddRepoButton" >Add to VCC</fluent-button>
-      <fluent-button class="ms-2" id="vccUrlFieldCopy">
-        <svg slot="start" width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-          <path d="M8 2C6.89543 2 6 2.89543 6 4V14C6 15.1046 6.89543 16 8 16H14C15.1046 16 16 15.1046 16 14V4C16 2.89543 15.1046 2 14 2H8ZM7 4C7 3.44772 7.44772 3 8 3H14C14.5523 3 15 3.44772 15 4V14C15 14.5523 14.5523 15 14 15H8C7.44772 15 7 14.5523 7 14V4ZM4 6.00001C4 5.25973 4.4022 4.61339 5 4.26758V14.5C5 15.8807 6.11929 17 7.5 17H13.7324C13.3866 17.5978 12.7403 18 12 18H7.5C5.567 18 4 16.433 4 14.5V6.00001Z"/>
+<body data-listing-url="{{ listingInfo.Url | html.escape }}" data-package-id="{{ if latest }}{{ latest.Name | html.escape }}{{ else }}com.vrctexturepainter.tool{{ end }}">
+
+  <!-- shared paint gradient, kept outside any section so every illustration can use it -->
+  <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="paint" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#ff6a5c"/>
+        <stop offset="0.5" stop-color="#c955f5"/>
+        <stop offset="1" stop-color="#4cc9f0"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#install">Skip to install</a>
+
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#top" aria-label="VRC Texture Painter home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="brandPaint" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stop-color="#ff6a5c"/>
+              <stop offset="0.55" stop-color="#c955f5"/>
+              <stop offset="1" stop-color="#4cc9f0"/>
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#brandPaint)"/>
+          <path d="M9 22.5c3.2-1 4.6-3.6 6.4-6.6 1.5-2.5 3.6-5.2 7.6-6.4" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+          <circle cx="22.6" cy="9.6" r="2.4" fill="#fff"/>
         </svg>
-        Copy
-      </fluent-button>
-      <fluent-tooltip id="urlBarHelpTooltip" anchor="urlBarHelp">
-        How to add a listing to your VCC
-      </fluent-tooltip>
-      <fluent-button id="urlBarHelp" appearance="stealth" class="ms-2">
-        <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 4V16C4 17.1046 4.89543 18 6 18H15.5C15.7761 18 16 17.7761 16 17.5C16 17.2239 15.7761 17 15.5 17H6C5.44772 17 5 16.5523 5 16H15C15.5523 16 16 15.5523 16 15V4C16 2.89543 15.1046 2 14 2H6C4.89543 2 4 2.89543 4 4ZM14 3C14.5523 3 15 3.44772 15 4V15H5V4C5 3.44772 5.44772 3 6 3H14ZM8.76069 6.40877C8.95015 6.21142 9.31074 6 10 6C10.6893 6 11.0499 6.21142 11.2393 6.40877C11.4409 6.61877 11.5 6.86546 11.5 7C11.5 7.4539 11.2301 7.69835 10.7773 7.92363C10.6657 7.97916 10.552 8.02883 10.4343 8.0797L10.4116 8.08953C10.3056 8.13534 10.1902 8.18521 10.088 8.23655C9.98257 8.28953 9.85193 8.36283 9.7433 8.46505C9.62799 8.57355 9.5 8.75189 9.5 9V9.99999C9.5 10.2761 9.72386 10.5 10 10.5C10.2761 10.5 10.5 10.2753 10.5 9.99918V9.1493C10.5111 9.14333 10.5234 9.13694 10.537 9.13009C10.6125 9.09217 10.703 9.05302 10.8197 9.00257L10.8313 8.99753C10.948 8.94704 11.0843 8.8878 11.2227 8.81894C11.7699 8.5467 12.5 8.0461 12.5 7C12.5 6.63454 12.3591 6.13123 11.9607 5.71623C11.5501 5.28858 10.9107 5 10 5C9.08926 5 8.44985 5.28858 8.03931 5.71623C7.64091 6.13123 7.5 6.63454 7.5 7C7.5 7.27614 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.27614 8.5 7C8.5 6.86546 8.55909 6.61877 8.76069 6.40877ZM10 13C10.4142 13 10.75 12.6642 10.75 12.25C10.75 11.8358 10.4142 11.5 10 11.5C9.58579 11.5 9.25 11.8358 9.25 12.25C9.25 12.6642 9.58579 13 10 13Z" />
-        </svg>
-      </fluent-button>
+        <span>VRC Texture Painter</span>
+      </a>
+      <nav class="topnav" aria-label="Sections">
+        <a href="#features">Features</a>
+        <a href="#uvs">UV layouts</a>
+        <a href="#install">Install</a>
+        <a class="icon-link" href="https://github.com/ToffelsKater/VRC-Texture-Painter" target="_blank" rel="noopener" aria-label="GitHub repository">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+        </a>
+      </nav>
     </div>
-    <fluent-dialog id="addListingToVccHelp" hidden modal>
-      <div class="col ps-4 pe-4">
-        <div class="row align-items-center justify-content-between mt-3 mb-4">
-          <div class="row align-items-center">
-            <svg class="me-2" style="fill: var(--neutral-foreground-rest)" width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 4V16C4 17.1046 4.89543 18 6 18H15.5C15.7761 18 16 17.7761 16 17.5C16 17.2239 15.7761 17 15.5 17H6C5.44772 17 5 16.5523 5 16H15C15.5523 16 16 15.5523 16 15V4C16 2.89543 15.1046 2 14 2H6C4.89543 2 4 2.89543 4 4ZM14 3C14.5523 3 15 3.44772 15 4V15H5V4C5 3.44772 5.44772 3 6 3H14ZM8.76069 6.40877C8.95015 6.21142 9.31074 6 10 6C10.6893 6 11.0499 6.21142 11.2393 6.40877C11.4409 6.61877 11.5 6.86546 11.5 7C11.5 7.4539 11.2301 7.69835 10.7773 7.92363C10.6657 7.97916 10.552 8.02883 10.4343 8.0797L10.4116 8.08953C10.3056 8.13534 10.1902 8.18521 10.088 8.23655C9.98257 8.28953 9.85193 8.36283 9.7433 8.46505C9.62799 8.57355 9.5 8.75189 9.5 9V9.99999C9.5 10.2761 9.72386 10.5 10 10.5C10.2761 10.5 10.5 10.2753 10.5 9.99918V9.1493C10.5111 9.14333 10.5234 9.13694 10.537 9.13009C10.6125 9.09217 10.703 9.05302 10.8197 9.00257L10.8313 8.99753C10.948 8.94704 11.0843 8.8878 11.2227 8.81894C11.7699 8.5467 12.5 8.0461 12.5 7C12.5 6.63454 12.3591 6.13123 11.9607 5.71623C11.5501 5.28858 10.9107 5 10 5C9.08926 5 8.44985 5.28858 8.03931 5.71623C7.64091 6.13123 7.5 6.63454 7.5 7C7.5 7.27614 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.27614 8.5 7C8.5 6.86546 8.55909 6.61877 8.76069 6.40877ZM10 13C10.4142 13 10.75 12.6642 10.75 12.25C10.75 11.8358 10.4142 11.5 10 11.5C9.58579 11.5 9.25 11.8358 9.25 12.25C9.25 12.6642 9.58579 13 10 13Z" />
-            </svg>
-            <h3 class="m-0">How to add this listing to your VCC</h3> 
-          </div>
-          <fluent-button appearance="stealth" id="addListingToVccHelpClose">
-            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4.08859 4.21569L4.14645 4.14645C4.32001 3.97288 4.58944 3.9536 4.78431 4.08859L4.85355 4.14645L10 9.293L15.1464 4.14645C15.32 3.97288 15.5894 3.9536 15.7843 4.08859L15.8536 4.14645C16.0271 4.32001 16.0464 4.58944 15.9114 4.78431L15.8536 4.85355L10.707 10L15.8536 15.1464C16.0271 15.32 16.0464 15.5894 15.9114 15.7843L15.8536 15.8536C15.68 16.0271 15.4106 16.0464 15.2157 15.9114L15.1464 15.8536L10 10.707L4.85355 15.8536C4.67999 16.0271 4.41056 16.0464 4.21569 15.9114L4.14645 15.8536C3.97288 15.68 3.9536 15.4106 4.08859 15.2157L4.14645 15.1464L9.293 10L4.14645 4.85355C3.97288 4.67999 3.9536 4.41056 4.08859 4.21569L4.14645 4.14645L4.08859 4.21569Z" />
-              </svg>
-          </fluent-button>
-        </div>
-        <p class="mb-1">
-          To add this listing to your VCC (VRChat Creator Companion), do the following
+  </header>
+
+  <main id="top">
+
+    <!-- Hero -->
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <p class="eyebrow">Creator Companion package for avatar creators</p>
+        <h1>Paint your avatar <span class="paint-text">right in Unity.</span></h1>
+        <p class="lead">
+          Texture painting in the Scene view, the way Blender's Texture Paint mode works.
+          Every stroke is projected onto the model, so it stays continuous across UV seams,
+          mirrored UVs and different UV channels.
         </p>
-        <ul class="mt-1 ps-5">
-          <li class="mb-2">Open your VCC and go to Settings</li>
-          <li class="mb-2">Click the "Packages" tab</li>
-          <li class="mb-2">Click "Add Repository"</li>
-          <li class="mb-2">In the field that appears - paste the url displayed below</li>
-          <li class="mb-2">Click "Add"</li>
-          <li class="mb-2">Check the repository info and click "I Understand"</li>
-          <li class="mb-2">Go to any of your projects to see the packages from the newly added listing.</li>
-        </ul>
-        <h5 class="m-0 mb-2">Listing URL</h5>
-        <div class="row align-items-center">
-          <fluent-text-field aria-readonly="true" id="vccListingInfoUrlField" class="vccUrlField" readonly value="{{ listingInfo.Url }}">
-          </fluent-text-field>
-          <fluent-button class="ms-2" id="vccListingInfoUrlFieldCopy">
-            <svg slot="start" width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 2C6.89543 2 6 2.89543 6 4V14C6 15.1046 6.89543 16 8 16H14C15.1046 16 16 15.1046 16 14V4C16 2.89543 15.1046 2 14 2H8ZM7 4C7 3.44772 7.44772 3 8 3H14C14.5523 3 15 3.44772 15 4V14C15 14.5523 14.5523 15 14 15H8C7.44772 15 7 14.5523 7 14V4ZM4 6.00001C4 5.25973 4.4022 4.61339 5 4.26758V14.5C5 15.8807 6.11929 17 7.5 17H13.7324C13.3866 17.5978 12.7403 18 12 18H7.5C5.567 18 4 16.433 4 14.5V6.00001Z"/>
-            </svg>
-            Copy
-          </fluent-button>
-        </div>
-        <div class="caption1 mt-4">You can read more about Package Listings <a href="https://vcc.docs.vrchat.com" target="_blank">on the VCC docs</a></div>
-      </div>
-    </fluent-dialog>
-    <div class="searchBlock">
-      <fluent-text-field id="searchInput" placeholder="Search packages..." type="text" autoFocus></fluent-text-field>
-    </div>
-    <fluent-menu id="rowMoreMenu" hidden>
-      <fluent-menu-item id="rowMoreMenuDownload">
-        <svg slot="start" width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15.5 16.9997C15.7761 16.9997 16 17.2236 16 17.4997C16 17.7452 15.8231 17.9494 15.5899 17.9917L15.5 17.9997H4.5C4.22386 17.9997 4 17.7759 4 17.4997C4 17.2543 4.17688 17.0501 4.41012 17.0078L4.5 16.9997H15.5ZM10.0001 2.00195C10.2456 2.00195 10.4497 2.17896 10.492 2.41222L10.5 2.5021L10.496 14.296L14.1414 10.6476C14.3148 10.4739 14.5842 10.4544 14.7792 10.5892L14.8485 10.647C15.0222 10.8204 15.0418 11.0898 14.907 11.2848L14.8492 11.3541L10.3574 15.8541C10.285 15.9267 10.1957 15.9724 10.1021 15.9911L9.99608 16.0008C9.83511 16.0008 9.69192 15.9247 9.60051 15.8065L5.14386 11.3547C4.94846 11.1595 4.94823 10.8429 5.14336 10.6475C5.3168 10.4739 5.58621 10.4544 5.78117 10.5892L5.85046 10.647L9.496 14.288L9.5 2.50181C9.50008 2.22567 9.724 2.00195 10.0001 2.00195Z" />
-        </svg>
-        <div>
-          Download .ZIP
-        </div>
-      </fluent-menu-item>
-    </fluent-menu>
-    <fluent-dialog id="packageInfoModal" hidden modal>
-      <div class="col ps-4 pe-4">
-        <div class="row align-items-center justify-content-between mt-3 mb-4">
-          <div class="col">
-            <h3 class="m-0 mb-1" id="packageInfoName">Package Name</h3>
-            <div class="row">
-              <div class="caption1" id="packageInfoId">com.package.id</div>
-              <div class="caption1 ms-2" id="packageInfoVersion">v1.0.1</div>
-            </div>
-          </div>
-          <fluent-button appearance="stealth" id="packageInfoModalClose">
-            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4.08859 4.21569L4.14645 4.14645C4.32001 3.97288 4.58944 3.9536 4.78431 4.08859L4.85355 4.14645L10 9.293L15.1464 4.14645C15.32 3.97288 15.5894 3.9536 15.7843 4.08859L15.8536 4.14645C16.0271 4.32001 16.0464 4.58944 15.9114 4.78431L15.8536 4.85355L10.707 10L15.8536 15.1464C16.0271 15.32 16.0464 15.5894 15.9114 15.7843L15.8536 15.8536C15.68 16.0271 15.4106 16.0464 15.2157 15.9114L15.1464 15.8536L10 10.707L4.85355 15.8536C4.67999 16.0271 4.41056 16.0464 4.21569 15.9114L4.14645 15.8536C3.97288 15.68 3.9536 15.4106 4.08859 15.2157L4.14645 15.1464L9.293 10L4.14645 4.85355C3.97288 4.67999 3.9536 4.41056 4.08859 4.21569L4.14645 4.14645L4.08859 4.21569Z" />
-              </svg>
-          </fluent-button>
-        </div>
-        <h5 class="m-0">Package Info</h5>
-        <p class="mb-4 mt-1" id="packageInfoDescription">
-          Package Description
-        </p>
-        <h5 class="m-0">Author</h5>
-        <p class="mb-4 mt-1">
-          <a href="#" target="_blank" id="packageInfoAuthor">
-            Author Name
+        <div class="cta-row">
+          <a class="btn btn-primary" data-vcc-add href="vcc://vpm/addRepo?url={{ listingInfo.Url | html.url_encode }}">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 1 1 0-2h5V4a1 1 0 0 1 1-1Z"/></svg>
+            Add to VCC
           </a>
-        </p>
-        <h5 class="m-0 mb-2">Dependencies</h5>
-        <ul class="mt-1 ps-5" id="packageInfoDependencies">
-        </ul>
-        <div class="col">
-          <h5 class="m-0 mb-2">Keywords</h5>
-          <div class="mb-2 mt-1 row" id="packageInfoKeywords">
-          </div>
-        </div>
-        <div class="col">
-          <h5 class="m-0">License</h5>
-          <a href="#" class="mb-4 mt-1" id="packageInfoLicense">
-            License
+          <a class="btn btn-ghost" data-latest-zip href="{{ if latest }}{{ latest.ZipUrl | html.escape }}{{ else }}https://github.com/ToffelsKater/VRC-Texture-Painter/releases/latest{{ end }}">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 2.5a1 1 0 0 1 1 1v7.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L9 11.1V3.5a1 1 0 0 1 1-1ZM4 15.5a1 1 0 0 1 1 1h10a1 1 0 1 1 0 2H5a2 2 0 0 1-2-2 1 1 0 0 1 1-1Z"/></svg>
+            Download .zip
           </a>
         </div>
-        <h5 class="m-0 mb-2">Listing URL</h5>
-        <div class="row align-items-center">
-          <fluent-text-field aria-readonly="true" id="packageInfoVccUrlField" class="vccUrlField" readonly value="{{ listingInfo.Url }}">
-          </fluent-text-field>
-          <fluent-button class="ms-2" id="packageInfoVccUrlFieldCopy">
-            <svg slot="start" width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 2C6.89543 2 6 2.89543 6 4V14C6 15.1046 6.89543 16 8 16H14C15.1046 16 16 15.1046 16 14V4C16 2.89543 15.1046 2 14 2H8ZM7 4C7 3.44772 7.44772 3 8 3H14C14.5523 3 15 3.44772 15 4V14C15 14.5523 14.5523 15 14 15H8C7.44772 15 7 14.5523 7 14V4ZM4 6.00001C4 5.25973 4.4022 4.61339 5 4.26758V14.5C5 15.8807 6.11929 17 7.5 17H13.7324C13.3866 17.5978 12.7403 18 12 18H7.5C5.567 18 4 16.433 4 14.5V6.00001Z"/>
-            </svg>
-            Copy
-          </fluent-button>
-          <fluent-tooltip id="packageInfoListingTooltip" anchor="packageInfoListingHelp">
-            How to add a listing to your VCC
-          </fluent-tooltip>
-          <fluent-button id="packageInfoListingHelp" class="ms-2">
-            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 4V16C4 17.1046 4.89543 18 6 18H15.5C15.7761 18 16 17.7761 16 17.5C16 17.2239 15.7761 17 15.5 17H6C5.44772 17 5 16.5523 5 16H15C15.5523 16 16 15.5523 16 15V4C16 2.89543 15.1046 2 14 2H6C4.89543 2 4 2.89543 4 4ZM14 3C14.5523 3 15 3.44772 15 4V15H5V4C5 3.44772 5.44772 3 6 3H14ZM8.76069 6.40877C8.95015 6.21142 9.31074 6 10 6C10.6893 6 11.0499 6.21142 11.2393 6.40877C11.4409 6.61877 11.5 6.86546 11.5 7C11.5 7.4539 11.2301 7.69835 10.7773 7.92363C10.6657 7.97916 10.552 8.02883 10.4343 8.0797L10.4116 8.08953C10.3056 8.13534 10.1902 8.18521 10.088 8.23655C9.98257 8.28953 9.85193 8.36283 9.7433 8.46505C9.62799 8.57355 9.5 8.75189 9.5 9V9.99999C9.5 10.2761 9.72386 10.5 10 10.5C10.2761 10.5 10.5 10.2753 10.5 9.99918V9.1493C10.5111 9.14333 10.5234 9.13694 10.537 9.13009C10.6125 9.09217 10.703 9.05302 10.8197 9.00257L10.8313 8.99753C10.948 8.94704 11.0843 8.8878 11.2227 8.81894C11.7699 8.5467 12.5 8.0461 12.5 7C12.5 6.63454 12.3591 6.13123 11.9607 5.71623C11.5501 5.28858 10.9107 5 10 5C9.08926 5 8.44985 5.28858 8.03931 5.71623C7.64091 6.13123 7.5 6.63454 7.5 7C7.5 7.27614 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.27614 8.5 7C8.5 6.86546 8.55909 6.61877 8.76069 6.40877ZM10 13C10.4142 13 10.75 12.6642 10.75 12.25C10.75 11.8358 10.4142 11.5 10 11.5C9.58579 11.5 9.25 11.8358 9.25 12.25C9.25 12.6642 9.58579 13 10 13Z" />
-            </svg>
-          </fluent-button>
+        <ul class="facts" aria-label="Package facts">
+          <li><strong data-latest-version>{{ if latest }}v{{ latest.Version | html.escape }}{{ else }}Latest release{{ end }}</strong></li>
+          <li>Unity 2022.3</li>
+          <li>Editor only</li>
+          <li>{{ if latest && latest.License }}{{ latest.License | html.escape }}{{ else }}MIT{{ end }} license</li>
+        </ul>
+      </div>
+
+      <figure class="hero-art" aria-label="A brush stroke crossing a UV seam on the model lands in both UV islands">
+        <svg viewBox="0 0 600 460" role="img">
+          <defs>
+            <radialGradient id="shade" cx="0.36" cy="0.32" r="0.75">
+              <stop offset="0" class="shade-light"/>
+              <stop offset="1" class="shade-dark"/>
+            </radialGradient>
+            <clipPath id="sphereClip"><circle cx="158" cy="250" r="112"/></clipPath>
+            <clipPath id="islandA"><path d="M340 118Q336 104 350 102L452 92Q466 91 468 105L480 246Q481 260 467 262L362 276Q348 278 346 264Z"/></clipPath>
+            <clipPath id="islandB"><path d="M488 300Q488 288 500 288L560 292Q572 293 572 305L568 410Q567 422 555 422L494 420Q482 420 482 408Z"/></clipPath>
+            <pattern id="uvGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+              <path d="M24 0H0V24" class="ill-grid"/>
+            </pattern>
+          </defs>
+
+          <!-- scene view -->
+          <rect x="16" y="40" width="284" height="400" rx="22" class="ill-card"/>
+          <text x="42" y="76" class="ill-label">Scene view</text>
+          <circle cx="158" cy="250" r="112" fill="url(#shade)"/>
+          <g clip-path="url(#sphereClip)">
+            <path d="M58 262C110 228 190 214 262 244" class="ill-stroke" stroke="url(#paint)"/>
+          </g>
+          <path d="M104 150C150 200 152 290 112 352" class="ill-seam"/>
+          <circle cx="256" cy="241" r="27" class="ill-brush"/>
+          <circle cx="256" cy="241" r="3" class="ill-brush-dot"/>
+          <text x="42" y="414" class="ill-caption">One stroke across the seam</text>
+
+          <!-- uv layout -->
+          <rect x="316" y="40" width="268" height="400" rx="22" class="ill-card"/>
+          <rect x="332" y="88" width="236" height="336" rx="10" fill="url(#uvGrid)"/>
+          <text x="342" y="76" class="ill-label">UV0</text>
+          <path d="M340 118Q336 104 350 102L452 92Q466 91 468 105L480 246Q481 260 467 262L362 276Q348 278 346 264Z" class="ill-island"/>
+          <path d="M488 300Q488 288 500 288L560 292Q572 293 572 305L568 410Q567 422 555 422L494 420Q482 420 482 408Z" class="ill-island"/>
+          <g clip-path="url(#islandA)"><path d="M372 200C405 188 440 180 490 186" class="ill-stroke thin" stroke="url(#paint)"/></g>
+          <g clip-path="url(#islandB)"><path d="M470 352C500 342 530 346 570 362" class="ill-stroke thin" stroke="url(#paint)"/></g>
+          <path d="M468 100L481 258" class="ill-seam"/>
+          <path d="M488 294L482 414" class="ill-seam"/>
+          <text x="342" y="414" class="ill-caption">Lands in both islands</text>
+        </svg>
+      </figure>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section wrap">
+      <div class="section-head">
+        <p class="eyebrow">What it does</p>
+        <h2>A texture painter that understands avatars</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c3-1 4.5-4 6.5-7S15 4 20 4c0 5-2.5 7.5-5.5 9.5S7 17 6 20" /><circle cx="5" cy="19" r="1.6"/></svg>
+          <h3>Paints in 3D</h3>
+          <p>Strokes are projected onto the posed model, with occlusion, backface culling and mirror painting. What you see is where the paint goes.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3" stroke-dasharray="2 2"/><circle cx="7" cy="17" r="3"/><path d="M14 17h6M17 14v6"/></svg>
+          <h3>Five brushes</h3>
+          <p>Hard, Soft, Blur, Color Blend and Eraser, with pen pressure, spacing and hardness, plus a colour picker.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 15c4-5 8 3 18-4"/></svg>
+          <h3>Seamless blending</h3>
+          <p>Color Blend turns hard borders into smooth gradients without smearing, and mixes colours perceptually so midpoints don't go muddy.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+          <h3>Photoshop style layers</h3>
+          <p>13 blend modes, opacity, visibility, lock transparency, merge down, fill and image import. Undo it all with Ctrl+Z.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/><path d="M11 7h4a2 2 0 0 1 2 2v4" stroke-dasharray="2 2"/></svg>
+          <h3>Every UV layout</h3>
+          <p>UV seams, mirrored and overlapping UVs, UV0 to UV7, and islands outside 0–1 for tiling or UV tile discard.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+          <h3>Safe for uploads</h3>
+          <p>Editor only. Nothing is added to your avatar and materials stay untouched until you export. Work is autosaved across Play mode.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- UV layouts -->
+    <section id="uvs" class="section wrap">
+      <div class="section-head">
+        <p class="eyebrow">Built for real avatar UVs</p>
+        <h2>The model decides where paint goes, not the UV map</h2>
+        <p class="section-lead">Each dab is rendered into texture space and tested against the 3D surface, so layouts that break ordinary painters simply work.</p>
+      </div>
+      <div class="uv-grid">
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <path d="M18 24h64v74H22z" class="mini-island"/>
+            <path d="M118 30h62v68h-60z" class="mini-island"/>
+            <path d="M40 60c16-6 30-8 42-6" class="mini-stroke" stroke="url(#paint)"/>
+            <path d="M118 66c14-4 30-2 50 6" class="mini-stroke" stroke="url(#paint)"/>
+            <path d="M82 20v82M118 26v76" class="ill-seam"/>
+          </svg>
+          <h3>Across UV seams</h3>
+          <p>A stroke over a seam paints both islands, and seam padding keeps mip maps free of thin lines.</p>
+        </article>
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <path d="M60 20h80v80H60z" class="mini-island"/>
+            <path d="M74 58c16-10 36-12 52-4" class="mini-stroke" stroke="url(#paint)"/>
+            <path d="M100 12v96" class="ill-seam"/>
+            <text x="18" y="64" class="ill-caption small">L</text>
+            <text x="172" y="64" class="ill-caption small">R</text>
+          </svg>
+          <h3>Mirrored and overlapping</h3>
+          <p>Texels shared by both sides of the body take paint from whichever side is under the brush.</p>
+        </article>
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <rect x="16" y="22" width="76" height="76" rx="6" class="mini-island"/>
+            <rect x="108" y="22" width="76" height="76" rx="6" class="mini-island"/>
+            <text x="26" y="40" class="ill-caption small">UV0</text>
+            <text x="118" y="40" class="ill-caption small">UV2</text>
+            <path d="M28 76c16-8 36-10 64-2" class="mini-stroke" stroke="url(#paint)"/>
+            <path d="M108 74c20-6 40-4 64 6" class="mini-stroke" stroke="url(#paint)"/>
+          </svg>
+          <h3>Several textures at once</h3>
+          <p>Paint a body texture on UV0 and a Poiyomi face decal on UV2 in one stroke, with a shared layer stack.</p>
+        </article>
+      </div>
+
+      <div class="keys" aria-label="Brush hotkeys">
+        <span class="keys-title">Hotkeys</span>
+        <span><kbd>3</kbd> Hard</span>
+        <span><kbd>4</kbd> Soft</span>
+        <span><kbd>5</kbd> Blur</span>
+        <span><kbd>6</kbd> Blend</span>
+        <span><kbd>7</kbd> Eraser</span>
+        <span><kbd>C</kbd> Pick colour</span>
+        <span><kbd>[</kbd> <kbd>]</kbd> Size</span>
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section id="install" class="section wrap">
+      <div class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2>Three steps with the Creator Companion</h2>
+      </div>
+      <ol class="steps">
+        <li>
+          <h3>Add the listing</h3>
+          <p>Click <strong>Add to VCC</strong>. The Creator Companion opens and asks you to confirm.</p>
+          <a class="btn btn-primary btn-small" data-vcc-add href="vcc://vpm/addRepo?url={{ listingInfo.Url | html.url_encode }}">Add to VCC</a>
+        </li>
+        <li>
+          <h3>Add it to your project</h3>
+          <p>Open your avatar project with <strong>Manage Project</strong> and add <strong>VRC Texture Painter</strong>.</p>
+        </li>
+        <li>
+          <h3>Start painting</h3>
+          <p>In Unity, open <strong>Tools &gt; VRC Texture Painter</strong>, pick your avatar's mesh and press <strong>Start Painting</strong>.</p>
+        </li>
+      </ol>
+
+      <div class="listing-box">
+        <label for="listingUrl">Listing URL</label>
+        <div class="copy-field">
+          <input id="listingUrl" type="text" readonly value="{{ listingInfo.Url | html.escape }}">
+          <button class="btn btn-ghost btn-small" type="button" data-copy="listingUrl">Copy</button>
         </div>
-        <div class="caption1 mt-4">You can read more about Package Listings <a href="https://vcc.docs.vrchat.com" target="_blank">on the VCC docs</a></div>
+        <details>
+          <summary>Add the listing manually</summary>
+          <ol>
+            <li>Open the Creator Companion and go to <strong>Settings</strong>, then <strong>Packages</strong>.</li>
+            <li>Click <strong>Add Repository</strong>, paste the listing URL and click <strong>Add</strong>.</li>
+            <li>Confirm with <strong>I Understand</strong>. The package now shows up in every project.</li>
+          </ol>
+        </details>
       </div>
-    </fluent-dialog>
-    <fluent-card class="packages">
-      <fluent-data-grid id="packageGrid" role="grid" grid-template-columns="1fr 100px 220px">
-        <fluent-data-grid-row row-type="header">
-          <fluent-data-grid-cell cell-type="columnheader" grid-column="1">
-            Name
-          </fluent-data-grid-cell>
-          <fluent-data-grid-cell cell-type="columnheader" grid-column="2">
-            Type
-          </fluent-data-grid-cell>
-          <fluent-data-grid-cell cell-type="columnheader" grid-column="3">
-          </fluent-data-grid-cell>
-        </fluent-data-grid-row>
-        {{~ for package in packages ~}}
-          <fluent-data-grid-row data-package-name="{{ package.DisplayName }}" data-package-id="{{ package.Name }}">
-            <fluent-data-grid-cell grid-column="1">
-              <div class="col">
-                <div class="packageName">{{ package.DisplayName }}</div>
-                <div class="caption1">{{ package.Description }}</div>
-                <div class="caption2">{{ package.Name }}</div>
-              </div>
-            </fluent-data-grid-cell>
-            <fluent-data-grid-cell grid-column="2" class="row align-items-center">
-              {{ package.Type }}
-            </fluent-data-grid-cell>
-            <fluent-data-grid-cell grid-column="3" class="row align-items-center justify-content-end">
-              <fluent-button appearance="accent" class="rowAddToVccButton" data-package-id="{{ package.Name }}">Add to VCC</fluent-button>
-              <fluent-button title="Package Info" class="rowPackageInfoButton ms-2" data-package-id="{{ package.Name }}">
-                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10.4921 8.91012C10.4497 8.67687 10.2456 8.49999 10.0001 8.49999C9.72397 8.49999 9.50011 8.72385 9.50011 8.99999V13.5021L9.50817 13.592C9.55051 13.8253 9.75465 14.0021 10.0001 14.0021C10.2763 14.0021 10.5001 13.7783 10.5001 13.5021V8.99999L10.4921 8.91012ZM10.7988 6.74999C10.7988 6.33578 10.463 5.99999 10.0488 5.99999C9.63461 5.99999 9.29883 6.33578 9.29883 6.74999C9.29883 7.16421 9.63461 7.49999 10.0488 7.49999C10.463 7.49999 10.7988 7.16421 10.7988 6.74999ZM18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18C14.4183 18 18 14.4183 18 10ZM3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10Z"/>
-                  </svg>
-              </fluent-button>
-              <fluent-button class="rowMenuButton ms-2" appearance="stealth" data-package-url="{{ package.ZipUrl }}">
-                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M6.25 10C6.25 10.6904 5.69036 11.25 5 11.25C4.30964 11.25 3.75 10.6904 3.75 10C3.75 9.30964 4.30964 8.75 5 8.75C5.69036 8.75 6.25 9.30964 6.25 10ZM11.25 10C11.25 10.6904 10.6904 11.25 10 11.25C9.30964 11.25 8.75 10.6904 8.75 10C8.75 9.30964 9.30964 8.75 10 8.75C10.6904 8.75 11.25 9.30964 11.25 10ZM15 11.25C15.6904 11.25 16.25 10.6904 16.25 10C16.25 9.30964 15.6904 8.75 15 8.75C14.3096 8.75 13.75 9.30964 13.75 10C13.75 10.6904 14.3096 11.25 15 11.25Z"/>
-                </svg>
-              </fluent-button>
-            </fluent-data-grid-cell>
-          </fluent-data-grid-row>
-        {{~ end ~}}
-      </fluent-data-grid>
-    </fluent-card>
-    {{~ if listingInfo.InfoLink.Url ~}}
-      <div class="caption1" id="publishedByText">
-        <a href="{{listingInfo.InfoLink.Url}}" target="_blank">{{ if listingInfo.InfoLink.Text; listingInfo.InfoLink.Text; else; "Lean More"; end; }}</a>
+    </section>
+
+    <!-- Package -->
+    <section id="package" class="section wrap">
+      <div class="section-head">
+        <p class="eyebrow">Package</p>
+        <h2>Release details</h2>
       </div>
-    {{~ end; ~}}
-  </div>
-  <script type="module" src="app.js"></script>
+      {{~ if (packages | array.size) > 0 ~}}
+      {{~ for package in packages ~}}
+      <article class="package-card">
+        <div class="package-main">
+          <div class="package-title">
+            <h3>{{ package.DisplayName | html.escape }}</h3>
+            <span class="badge" data-latest-version>v{{ package.Version | html.escape }}</span>
+          </div>
+          <code class="package-id">{{ package.Name | html.escape }}</code>
+          {{~ if package.Description ~}}
+          <p>{{ package.Description | html.escape }}</p>
+          {{~ end ~}}
+          {{~ if package.Keywords ~}}
+          <ul class="chips">
+            {{~ for keyword in package.Keywords ~}}
+            <li>{{ keyword | html.escape }}</li>
+            {{~ end ~}}
+          </ul>
+          {{~ end ~}}
+        </div>
+        <dl class="package-meta">
+          <div><dt>Author</dt><dd>{{ if package.Author.Url }}<a href="{{ package.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ package.Author.Name | html.escape }}</a>{{ else }}{{ package.Author.Name | html.escape }}{{ end }}</dd></div>
+          <div><dt>License</dt><dd>{{ if package.LicenseUrl }}<a href="{{ package.LicenseUrl | html.escape }}" target="_blank" rel="noopener">{{ package.License | html.escape }}</a>{{ else }}{{ package.License | html.escape }}{{ end }}</dd></div>
+          <div><dt>Dependencies</dt><dd>{{ if (package.Dependencies | array.size) > 0 }}{{ for dependency in package.Dependencies }}{{ dependency.Name | html.escape }} {{ dependency.Version | html.escape }}{{ if !for.last }}, {{ end }}{{ end }}{{ else }}None{{ end }}</dd></div>
+          <div class="package-actions">
+            <a class="btn btn-ghost btn-small" data-latest-zip href="{{ package.ZipUrl | html.escape }}">Download .zip</a>
+            <a class="btn btn-ghost btn-small" href="https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/README.md" target="_blank" rel="noopener">Documentation</a>
+          </div>
+        </dl>
+      </article>
+      {{~ end ~}}
+      {{~ else ~}}
+      <article class="package-card">
+        <div class="package-main">
+          <div class="package-title">
+            <h3>VRC Texture Painter</h3>
+            <span class="badge" data-latest-version>Latest</span>
+          </div>
+          <code class="package-id">com.vrctexturepainter.tool</code>
+          <p>Paint textures directly on your avatar in the Unity Scene view.</p>
+        </div>
+        <dl class="package-meta">
+          <div><dt>Author</dt><dd><a href="{{ listingInfo.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ listingInfo.Author.Name | html.escape }}</a></dd></div>
+          <div class="package-actions">
+            <a class="btn btn-ghost btn-small" data-latest-zip href="https://github.com/ToffelsKater/VRC-Texture-Painter/releases/latest">Download .zip</a>
+            <a class="btn btn-ghost btn-small" href="https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/README.md" target="_blank" rel="noopener">Documentation</a>
+          </div>
+        </dl>
+      </article>
+      {{~ end ~}}
+
+      <div class="versions" id="versions" hidden>
+        <h3>All versions</h3>
+        <ul id="versionList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p>Published by <a href="{{ listingInfo.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ listingInfo.Author.Name | html.escape }}</a> · <a href="https://github.com/ToffelsKater/VRC-Texture-Painter" target="_blank" rel="noopener">Source on GitHub</a></p>
+      <p class="muted">A community tool, not affiliated with or endorsed by VRChat Inc.</p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js" defer></script>
 </body>
 </html>
