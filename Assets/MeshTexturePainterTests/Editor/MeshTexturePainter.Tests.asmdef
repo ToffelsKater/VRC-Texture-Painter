@@ -1,0 +1,6 @@
+{
+    "name": "MeshTexturePainter.Tests",
+    "references": [ "MeshTexturePainter.Editor" ],
+    "includePlatforms": [ "Editor" ],
+    "autoReferenced": false
+}

@@ -1,0 +1,25 @@
+{
+  "name": "com.vrctexturepainter.tool",
+  "displayName": "VRC Texture Painter",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "Paint textures directly on your avatar in the Scene view, like Blender's Texture Paint mode: hard, soft, blur, color blend and eraser brushes, Photoshop style layers, and 3D projection painting that stays correct across UV seams, mirrored UVs and multiple UV channels. Editor-only.",
+  "author": {
+    "name": "ToffelsKater",
+    "url": "https://github.com/ToffelsKater"
+  },
+  "license": "MIT",
+  "documentationUrl": "https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/README.md",
+  "changelogUrl": "https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/CHANGELOG.md",
+  "licensesUrl": "https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/LICENSE.md",
+  "vpmDependencies": {},
+  "keywords": [
+    "vrchat",
+    "avatar",
+    "texture",
+    "paint",
+    "layers",
+    "poiyomi",
+    "editor"
+  ]
+}
