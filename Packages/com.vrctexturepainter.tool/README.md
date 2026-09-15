@@ -28,7 +28,7 @@ Then open **Tools > VRC Texture Painter**.
 
 ## Quick start
 
-1. Select the avatar's body mesh (or right click the *Skinned Mesh Renderer* component and choose **Paint Texture**).
+1. Select the avatar's body mesh (or right click the *Skinned Mesh Renderer* component and choose **Paint Texture**). To paint the shader's masks instead, use the **Mask Painter** tab (see [Mask painter](#mask-painter)).
 2. In the window, click **Use Selection**, then check the material slots, the texture property (usually `_MainTex`) and the UV channel (usually `UV0`).
 3. Click **Start Painting**. The current texture becomes the *Base* layer, and an empty *Layer 1* is added above it for painting.
 4. Paint in the Scene view with the left mouse button. Alt + drag still orbits.
@@ -78,6 +78,40 @@ it closer to the finished gradient.
 
 Every paint stroke and layer operation is on **Ctrl+Z / Ctrl+Y** through Unity's
 normal undo. History is kept on the GPU, 30 steps by default.
+
+## Mask painter
+
+The window has two tabs. **Texture Painter** is the colour painter described
+above. **Mask Painter** paints the mask textures of a shader.
+
+1. Pick the renderer and material slots as usual.
+2. Under **Mask Texture**, pick one of the shader's mask slots and its UV channel.
+   Mask slots are the texture slots whose property name or label contains "mask",
+   such as Poiyomi's `_EmissionMask` or the Standard shader's `_DetailMask`. Only
+   mask slots are listed here, and the Texture Painter lists every other texture
+   slot. A slot without a texture starts black.
+3. Click **Start Painting Mask** and choose what to paint: **R**, **G**, **B**,
+   **White** or **Black**.
+
+Masks mix instead of replacing each other. R, G and B each change only their own
+channel, so painting red and then green over the same spot gives red + green
+(yellow), and both masks are kept. White raises every colour channel, Black clears
+every colour channel. Alpha is never painted and stays as it is.
+
+| Tool | Key | On a mask |
+| --- | --- | --- |
+| Hard / Soft | `3` / `4` | Move the selected channel(s) towards 1 (Black: towards 0), up to the opacity |
+| Blur | `5` | Softens only the selected channel(s) |
+| Eraser | `7` | Takes the selected channel(s) back to 0 |
+
+- **Fill**, **Clear** and **Invert** change the selected channel(s) on the whole mask.
+- **Show Mask On Model** also puts the mask in place of the material's main
+  texture, so you can see where it is painted even when the effect it drives is off.
+- Masks have no layer stack. Strokes go straight into the mask texture, with undo.
+- Export, Overwrite Source and projects work like in the texture painter.
+- Each tab keeps its own brush settings and its own session. Both can be open at
+  the same time, but only the visible tab paints and shows its preview on the
+  model. A dot on a tab means it has a session open.
 
 ## Controls
 
@@ -188,6 +222,7 @@ don't run it in an avatar project.
 ## Project files
 
 `.mtpaint` files hold a JSON header (target renderer, UV channel, slots,
-texture property, padding) and one PNG per layer. You can store them inside or
+texture property, padding, texture or mask project) and one PNG per layer. A mask
+project always opens in the Mask Painter tab. You can store them inside or
 outside `Assets`. When you open a project, it finds its renderer again by object
 id or hierarchy path. If that fails, select the renderer first.

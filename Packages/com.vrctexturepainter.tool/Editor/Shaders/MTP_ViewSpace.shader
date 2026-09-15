@@ -8,6 +8,7 @@ Shader "Hidden/MeshTexturePainter/ViewSpace"
 
     float4x4 _CaptureVP;        // GPU view projection (render texture ready)
     float _WeightByBrush;
+    float _IgnoreAlpha;         // masks: every texel counts as opaque, alpha is just another channel
     Texture2D<float4> _Layer;
 
     struct v2f_view
@@ -45,6 +46,10 @@ Shader "Hidden/MeshTexturePainter/ViewSpace"
         float4 c10 = _Layer.Load(int3(PadTexel(i0 + int2(1, 0)), 0));
         float4 c01 = _Layer.Load(int3(PadTexel(i0 + int2(0, 1)), 0));
         float4 c11 = _Layer.Load(int3(PadTexel(i0 + int2(1, 1)), 0));
+        if (_IgnoreAlpha > 0.5)
+        {
+            c00.a = 1.0; c10.a = 1.0; c01.a = 1.0; c11.a = 1.0;
+        }
         // interpolate premultiplied so transparent texels do not tint the colour
         c00.rgb *= c00.a; c10.rgb *= c10.a; c01.rgb *= c01.a; c11.rgb *= c11.a;
         return lerp(lerp(c00, c10, f.x), lerp(c01, c11, f.x), f.y);

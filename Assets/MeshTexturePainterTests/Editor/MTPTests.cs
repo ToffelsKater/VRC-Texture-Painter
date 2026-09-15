@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -33,6 +34,7 @@ namespace MeshTexturePainter.Tests
                 SecondUVChannel();
                 MultiTexturePaint();
                 BlendTransition();
+                MaskPaint();
             }
             catch (Exception e)
             {
@@ -1066,6 +1068,159 @@ namespace MeshTexturePainter.Tests
                 var c = Pixel(baseLayer.texture, 0.5f, 0.5f);
                 Check(Mathf.Abs(c.r - flat.r) < 0.015f && Mathf.Abs(c.g - flat.g) < 0.015f && Mathf.Abs(c.b - flat.b) < 0.015f,
                     $"{space}: a flat colour stays unchanged {Str(c)}");
+            }
+
+            session.Dispose();
+            Cleanup(mr, cam);
+        }
+
+        /// <summary>
+        /// Mask painting: R, G and B strokes only move their own channel and add up in the
+        /// same spot, blur only touches the selected channel, colour survives zero alpha.
+        /// </summary>
+        static void MaskPaint()
+        {
+            var cam = MakeCamera(true);
+            var mr = MakeQuads((R(-1, -1, 1, 1), 0f, R(0, 0, 1, 1)));
+            var specs = new[] { new PartSpec { textureProperty = "_DetailMask", uvChannel = 0, width = Size, height = Size } };
+            var session = PaintSession.Create(mr, new[] { 0 }, specs, 8, new BrushSettings(), out string error, PaintMode.Mask);
+            Check(session != null && session.IsMask, "mask session " + error);
+            if (session == null)
+            {
+                Cleanup(mr, cam);
+                return;
+            }
+            // each painter lists its own texture slots
+            var masks = MeshTexturePainterWindow.MaskProperties(mr.sharedMaterial);
+            var colors = MeshTexturePainterWindow.ColorTextureProperties(mr.sharedMaterial);
+            Check(masks.Contains("_DetailMask") && !masks.Contains("_MainTex") && colors.Contains("_MainTex") && !colors.Contains("_DetailMask") && !colors.Intersect(masks).Any(),
+                $"mask painter lists only masks [{string.Join(", ", masks)}], texture painter no masks [{string.Join(", ", colors)}]");
+
+            var doc = session.Document;
+            var s = session.Settings;
+            Check(doc.IsMask && doc.Layers.Count == 1 && !doc.IsSRGB, $"mask starts as one linear layer layers={doc.Layers.Count} srgb={doc.IsSRGB}");
+            var start = Pixel(doc.ActiveLayer.texture, 0.5f, 0.5f);
+            Check(start.r < 0.01f && start.g < 0.01f && start.b < 0.01f && start.a > 0.99f, "new mask starts black " + Str(start));
+
+            void Stroke(PaintTool tool, MaskChannel channel, Vector3 world, float radius = 30f)
+            {
+                s.maskChannel = channel;
+                session.BeginStrokeCore(tool);
+                session.ApplyDab(cam, Dab(cam, session.Target, world, radius));
+                session.EndStroke();
+            }
+            Color At(float u) => Pixel(doc.ActiveLayer.texture, u, 0.5f);
+
+            // red and green over the same spot add up instead of replacing each other
+            Stroke(PaintTool.HardBrush, MaskChannel.Red, Vector3.zero);
+            var red = At(0.5f);
+            Check(red.r > 0.99f && red.g < 0.01f && red.b < 0.01f, "red paints only the red channel " + Str(red));
+            Stroke(PaintTool.HardBrush, MaskChannel.Green, Vector3.zero);
+            var both = At(0.5f);
+            Check(both.r > 0.99f && both.g > 0.99f && both.b < 0.01f && both.a > 0.99f, "green over red keeps red " + Str(both));
+
+            // the pending stroke shows in the preview composite before it is committed
+            s.maskChannel = MaskChannel.Blue;
+            session.BeginStrokeCore(PaintTool.HardBrush);
+            session.ApplyDab(cam, Dab(cam, session.Target, Vector3.zero, 30f));
+            var pending = Pixel(doc.GetComposite(), 0.5f, 0.5f);
+            Check(pending.r > 0.99f && pending.g > 0.99f && pending.b > 0.99f, "pending blue stroke adds to the composite " + Str(pending));
+            session.EndStroke();
+
+            // opacity moves the channel part of the way
+            s.hard.strength = 0.5f;
+            Stroke(PaintTool.HardBrush, MaskChannel.Red, new Vector3(-0.5f, 0f, 0f), 20f);
+            s.hard.strength = 1f;
+            var half = At(0.25f);
+            Check(Mathf.Abs(half.r - 0.5f) < 0.02f && half.g < 0.01f, "opacity scales the mask " + Str(half));
+
+            // the eraser clears only the selected channel, black clears all, white sets all
+            Stroke(PaintTool.Eraser, MaskChannel.Green, Vector3.zero);
+            var erased = At(0.5f);
+            Check(erased.r > 0.99f && erased.g < 0.01f && erased.b > 0.99f, "eraser clears only green " + Str(erased));
+            Stroke(PaintTool.HardBrush, MaskChannel.Black, Vector3.zero);
+            var black = At(0.5f);
+            Check(black.r < 0.01f && black.g < 0.01f && black.b < 0.01f && black.a > 0.99f, "black clears every channel and keeps alpha " + Str(black));
+            Stroke(PaintTool.HardBrush, MaskChannel.White, Vector3.zero);
+            var white = At(0.5f);
+            Check(white.r > 0.99f && white.g > 0.99f && white.b > 0.99f, "white sets every channel " + Str(white));
+            session.History.PerformUndo();
+            Check(At(0.5f).r < 0.01f, "undo reverts the mask stroke " + Str(At(0.5f)));
+
+            // whole mask operations on the selected channel
+            s.maskChannel = MaskChannel.Green;
+            session.ApplyMaskOperation(MaskOperation.Invert);
+            var inverted = At(0.9f);
+            Check(inverted.g > 0.99f && inverted.r < 0.01f, "invert green " + Str(inverted));
+            s.maskChannel = MaskChannel.Red;
+            session.ApplyMaskOperation(MaskOperation.Fill);
+            var filled = At(0.9f);
+            Check(filled.r > 0.99f && filled.g > 0.99f && filled.b < 0.01f, "fill red keeps green " + Str(filled));
+            session.History.PerformUndo();
+            session.History.PerformUndo();
+            Check(At(0.9f).r < 0.01f && At(0.9f).g < 0.01f, "undo mask operations " + Str(At(0.9f)));
+
+            // blur only touches the selected channel: black / white split in every channel
+            var split = SplitTexture();
+            var layer = doc.ActiveLayer;
+            RTUtil.Release(ref layer.texture);
+            layer.texture = doc.RenderImported(split, false);
+            layer.MarkDirty();
+            UnityEngine.Object.DestroyImmediate(split);
+            s.blur.strength = 1f;
+            s.blur.hardness = 0.8f;
+            s.blurSize = 0.5f;
+            s.maskChannel = MaskChannel.Red;
+            session.BeginStrokeCore(PaintTool.Blur);
+            for (int i = 0; i < 4; i++) session.ApplyDab(cam, Dab(cam, session.Target, Vector3.zero, 40f));
+            session.EndStroke();
+            var right = At(0.5f + 2f / Size);
+            var left = At(0.5f - 2f / Size);
+            Check(right.r < 0.9f && left.r > 0.1f && right.g > 0.99f && left.g < 0.01f, $"blur softens only red right={Str(right)} left={Str(left)}");
+
+            // colour channels survive where the mask's alpha is 0
+            RTUtil.Clear(layer.texture, new Color(0f, 0f, 0f, 0f));
+            layer.MarkDirty();
+            Stroke(PaintTool.HardBrush, MaskChannel.Blue, Vector3.zero);
+            var clearAlpha = Pixel(doc.GetComposite(), 0.5f, 0.5f);
+            Check(clearAlpha.b > 0.99f && clearAlpha.a < 0.01f, "mask colour survives zero alpha " + Str(clearAlpha));
+            var present = RTUtil.Create("present", Size, Size, RenderTextureFormat.ARGB32);
+            doc.Present(session.Target.PadMap, session.Target.WrapVector, present);
+            var presented = Pixel(present, 0.5f, 0.5f);
+            Check(presented.b > 0.99f, "presented mask keeps colour at zero alpha " + Str(presented));
+            RTUtil.Release(ref present);
+
+            // no colour blend brush and no colour picking on masks
+            Check(!session.HandleKeyEvent(new Event { type = EventType.KeyDown, keyCode = KeyCode.Alpha6 }) && s.tool != PaintTool.ColorBlend, "6 selects no blend brush in the mask painter");
+            Check(!session.PickColor(default), "no colour picking on masks");
+
+            // preview: on the mask slot, optionally in place of the main texture
+            MaterialPropertyBlock Block()
+            {
+                var block = new MaterialPropertyBlock();
+                mr.GetPropertyBlock(block, 0);
+                return block;
+            }
+            session.RefreshPreview();
+            Check(Block().GetTexture("_DetailMask") is RenderTexture && Block().GetTexture("_MainTex") == null, "mask preview shows on its slot");
+            session.ShowMaskOnModel = true;
+            session.RefreshPreview();
+            Check(Block().GetTexture("_MainTex") != null && Block().GetTexture("_MainTex") == Block().GetTexture("_DetailMask"), "show mask on model");
+            session.ShowMaskOnModel = false;
+            session.RefreshPreview();
+            Check(Block().GetTexture("_MainTex") == null && Block().GetTexture("_DetailMask") is RenderTexture, "mask hidden from the model again");
+
+            // save and reopen as a mask
+            string path = System.IO.Path.GetFullPath("Temp/mtp_mask.mtpaint");
+            session.SaveProject(path);
+            Check(PaintProjectIO.ReadMeta(path).mode == (int)PaintMode.Mask, "project header records the mask mode");
+            var reopened = PaintSession.Open(path, mr, new BrushSettings(), out string openError);
+            Check(reopened != null && reopened.IsMask && reopened.Document.IsMask && reopened.Document.Layers.Count == 1, "mask project reopens as a mask " + openError);
+            if (reopened != null)
+            {
+                var c = Pixel(reopened.Document.GetComposite(), 0.5f, 0.5f);
+                Check(c.b > 0.99f && c.a < 0.01f, "reopened mask keeps colour at zero alpha " + Str(c));
+                reopened.Dispose();
             }
 
             session.Dispose();

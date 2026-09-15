@@ -19,6 +19,23 @@ namespace MeshTexturePainter
         public TextureWrapMode? wrapV;
     }
 
+    /// <summary>What a session paints.</summary>
+    internal enum PaintMode
+    {
+        /// <summary>Colour textures with a layer stack.</summary>
+        Color = 0,
+        /// <summary>One mask texture painted per channel: red, green and blue masks add up instead of replacing each other.</summary>
+        Mask = 1
+    }
+
+    /// <summary>Whole texture operations of the mask painter on the selected channels.</summary>
+    internal enum MaskOperation
+    {
+        Fill = 0,
+        Clear = 1,
+        Invert = 2
+    }
+
     /// <summary>
     /// One painted texture of a session. A material can show different textures
     /// through different UV channels (the main texture on UV0 for the body, a
@@ -64,13 +81,30 @@ namespace MeshTexturePainter
         public BrushEngine Engine { get; private set; }
         public BrushSettings Settings { get; }
         public ProjectMeta Meta { get; }
+        public PaintMode Mode => (PaintMode)Meta.mode;
+        public bool IsMask => Mode == PaintMode.Mask;
 
         public string ProjectPath;
         public bool Dirty;
         public bool IsStroking => stroking;
 
+        /// <summary>Mask painting: also show the mask in place of the main texture, to see where it is painted.</summary>
+        public bool ShowMaskOnModel
+        {
+            get => showMaskOnModel;
+            set
+            {
+                if (value == showMaskOnModel) return;
+                showMaskOnModel = value;
+                // property blocks keep a texture once it is set, so start again from the renderer's own blocks
+                Target?.RestorePreview();
+                MarkChanged();
+            }
+        }
+
         public event Action Changed;
 
+        bool showMaskOnModel;
         bool previewDirty = true;
         double lastPoseCheck;
         bool previousToolsHidden;
@@ -115,8 +149,9 @@ namespace MeshTexturePainter
 
         /// <summary>Starts painting one or more textures of the renderer's material at once.</summary>
         public static PaintSession Create(Renderer renderer, int[] slots, IReadOnlyList<PartSpec> specs, int padding,
-            BrushSettings settings, out string error)
+            BrushSettings settings, out string error, PaintMode mode = PaintMode.Color)
         {
+            bool mask = mode == PaintMode.Mask;
             error = null;
             if (specs == null || specs.Count == 0)
             {
@@ -146,10 +181,19 @@ namespace MeshTexturePainter
                 claimed.Add(spec.uvChannel);
 
                 var size = spec.width > 0 && spec.height > 0 ? new Vector2Int(spec.width, spec.height) : PaintProjectIO.SourceSize(source);
-                var doc = new PaintDocument(Mathf.Clamp(size.x, 16, 8192), Mathf.Clamp(size.y, 16, 8192)) { IsSRGB = PaintProjectIO.IsSRGB(source) };
-                doc.Layers.Add(CreateBaseLayer(doc, source));
-                doc.Layers.Add(doc.CreateLayer("Layer 1", Color.clear));
-                doc.ActiveIndex = 1;
+                var doc = new PaintDocument(Mathf.Clamp(size.x, 16, 8192), Mathf.Clamp(size.y, 16, 8192))
+                {
+                    // a new mask holds data, not colour
+                    IsSRGB = mask && source == null ? false : PaintProjectIO.IsSRGB(source),
+                    IsMask = mask
+                };
+                // a mask is painted directly into the texture; colour painting starts on an empty layer
+                doc.Layers.Add(CreateBaseLayer(doc, source, mask ? Color.black : Color.white));
+                if (!mask)
+                {
+                    doc.Layers.Add(doc.CreateLayer("Layer 1", Color.clear));
+                    doc.ActiveIndex = 1;
+                }
 
                 parts.Add(new PaintPart
                 {
@@ -169,13 +213,13 @@ namespace MeshTexturePainter
                 });
             }
 
-            var meta = new ProjectMeta { slots = parts[0].Target.Slots, padding = padding, parts = parts.Select(p => p.Meta).ToArray() };
+            var meta = new ProjectMeta { slots = parts[0].Target.Slots, padding = padding, mode = (int)mode, parts = parts.Select(p => p.Meta).ToArray() };
             return Finish(parts, settings, meta, padding);
         }
 
-        static PaintLayer CreateBaseLayer(PaintDocument doc, Texture source)
+        static PaintLayer CreateBaseLayer(PaintDocument doc, Texture source, Color empty)
         {
-            if (source == null) return doc.CreateLayer("Base", Color.white);
+            if (source == null) return doc.CreateLayer("Base", empty);
             var raw = PaintProjectIO.LoadSourcePixels(source);
             if (raw != null)
             {
@@ -380,6 +424,8 @@ namespace MeshTexturePainter
                 part.Preview.GenerateMips();
                 shown.Add((part.Meta.textureProperty, part.Preview));
             }
+            if (IsMask && showMaskOnModel && parts.All(p => p.Meta.textureProperty != "_MainTex"))
+                shown.Add(("_MainTex", parts[0].Preview));
             Target.ApplyPreview(shown);
             SceneView.RepaintAll();
         }
@@ -510,7 +556,10 @@ namespace MeshTexturePainter
                 case KeyCode.Alpha5:
                 case KeyCode.Keypad3: Settings.tool = PaintTool.Blur; break;
                 case KeyCode.Alpha6:
-                case KeyCode.Keypad4: Settings.tool = PaintTool.ColorBlend; break;
+                case KeyCode.Keypad4:
+                    if (IsMask) return false;
+                    Settings.tool = PaintTool.ColorBlend;
+                    break;
                 case KeyCode.Alpha7:
                 case KeyCode.Keypad5: Settings.tool = PaintTool.Eraser; break;
                 case KeyCode.C:
@@ -557,12 +606,14 @@ namespace MeshTexturePainter
             if (!cursorInView) return;
             var tool = Settings.Current;
             float radiusPoints = tool.radius / EditorGUIUtility.pixelsPerPoint;
-            Color ring = BrushSettings.UsesColor(Settings.tool) ? Settings.color : Color.white;
+            Color ring = IsMask ? (Settings.tool == PaintTool.Blur ? Color.white : MaskChannels.Display(Settings.maskChannel))
+                : BrushSettings.UsesColor(Settings.tool) ? Settings.color : Color.white;
             ring.a = 1f;
 
             Handles.BeginGUI();
             var center = new Vector3(cursorGui.x, cursorGui.y, 0f);
-            Handles.color = new Color(0f, 0f, 0f, 0.6f);
+            // dark brushes (a black mask) get a light outline so the ring stays visible
+            Handles.color = ring.grayscale < 0.2f ? new Color(1f, 1f, 1f, 0.6f) : new Color(0f, 0f, 0f, 0.6f);
             Handles.DrawWireDisc(center, Vector3.forward, radiusPoints + 1f);
             Handles.color = ring;
             Handles.DrawWireDisc(center, Vector3.forward, radiusPoints);
@@ -608,10 +659,19 @@ namespace MeshTexturePainter
         internal void BeginStrokeCore(PaintTool tool)
         {
             ReleaseSnapshots();
+            if (IsMask && !BrushSettings.UsableForMasks(tool)) tool = PaintTool.SoftBrush;
             strokeTool = tool;
             strokeHadDabs = false;
             strokeLayers = parts.Select(p => p.Document.ActiveLayer).ToArray();
-            if (BrushSettings.IsStrokeBuffered(tool))
+            if (BrushSettings.IsStrokeBuffered(tool) && IsMask)
+            {
+                // masks: only the selected channels move, towards 1 (Black and the eraser: 0)
+                var channel = Settings.maskChannel;
+                float value = tool == PaintTool.Eraser ? 0f : MaskChannels.Value(channel);
+                var target = new Color(value, value, value, value);
+                foreach (var part in parts) part.Document.BeginStroke(StrokeKind.Channel, target, Settings.For(tool).strength, MaskChannels.Weights(channel));
+            }
+            else if (BrushSettings.IsStrokeBuffered(tool))
             {
                 var kind = tool == PaintTool.Eraser ? StrokeKind.Erase : StrokeKind.Paint;
                 foreach (var part in parts) part.Document.BeginStroke(kind, Settings.color, Settings.For(tool).strength);
@@ -746,7 +806,8 @@ namespace MeshTexturePainter
 
         public bool PickColor(PaintHit hit, int partIndex)
         {
-            if (partIndex < 0 || partIndex >= parts.Count) return false;
+            // masks are painted with channels, not colours
+            if (IsMask || partIndex < 0 || partIndex >= parts.Count) return false;
             var part = parts[partIndex];
             var doc = part.Document;
             var composite = doc.GetComposite();
@@ -756,6 +817,29 @@ namespace MeshTexturePainter
             Settings.color = c;
             Changed?.Invoke();
             return true;
+        }
+
+        // ------------------------------------------------------------------ mask operations
+
+        /// <summary>Mask painting: fills, clears or inverts the channels of the selected mask colour on the whole mask.</summary>
+        public void ApplyMaskOperation(MaskOperation operation)
+        {
+            if (!IsMask) return;
+            var channel = Settings.maskChannel;
+            var weights = MaskChannels.Weights(channel);
+            float value = operation == MaskOperation.Fill ? MaskChannels.Value(channel) : 0f;
+            string name = $"{operation} {channel}";
+            var steps = new List<HistoryStep>();
+            foreach (var part in parts)
+            {
+                var layer = part.Document.ActiveLayer;
+                var old = layer.texture;
+                layer.texture = part.Document.RenderChannelOperation(old, weights, operation == MaskOperation.Invert, value);
+                layer.MarkDirty();
+                steps.Add(new PixelStep(name, layer, old));
+            }
+            PushPixelSteps(name, steps);
+            Commit();
         }
 
         // ------------------------------------------------------------------ layer operations
@@ -954,7 +1038,7 @@ namespace MeshTexturePainter
             PaintProjectIO.ExportPng(part.Document, part.Target.PadMap, part.Target.WrapVector, fullPath);
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
             if (!overwriting || assetPath != pm.sourceTexturePath)
-                PaintProjectIO.CopyImporterSettings(pm.sourceTexturePath, assetPath, part.Document.IsSRGB);
+                PaintProjectIO.CopyImporterSettings(pm.sourceTexturePath, assetPath, part.Document.IsSRGB, alphaIsTransparencyFallback: !IsMask);
 
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
             pm.exportPath = assetPath;

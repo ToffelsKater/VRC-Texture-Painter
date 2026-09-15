@@ -4,6 +4,12 @@
 // the model.
 Shader "Hidden/MeshTexturePainter/UVSpace"
 {
+    Properties
+    {
+        // Channels blur / blend write, as UnityEngine.Rendering.ColorWriteMask (14 = RGB)
+        _ColorWriteMask ("Color Write Mask", Float) = 14
+    }
+
     CGINCLUDE
     #pragma target 4.5
     #include "MTPCommon.cginc"
@@ -116,10 +122,10 @@ Shader "Hidden/MeshTexturePainter/UVSpace"
             ENDCG
         }
 
-        // 2: blur / blend colour (lerp towards target)
+        // 2: blur / blend colour (lerp towards target), only into the channels of _ColorWriteMask
         Pass
         {
-            ColorMask RGB
+            ColorMask [_ColorWriteMask]
             Blend SrcAlpha OneMinusSrcAlpha
             CGPROGRAM
             #pragma vertex vert_uvspace

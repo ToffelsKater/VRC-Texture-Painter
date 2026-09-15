@@ -8,7 +8,9 @@ namespace MeshTexturePainter
     {
         None = 0,
         Paint = 1,
-        Erase = 2
+        Erase = 2,
+        /// <summary>Mask painting: only the stroke's channels move towards its colour.</summary>
+        Channel = 3
     }
 
     /// <summary>
@@ -22,12 +24,19 @@ namespace MeshTexturePainter
         public readonly int Width;
         public readonly int Height;
         public bool IsSRGB = true;
+        /// <summary>
+        /// A mask texture: its single layer is the texture itself, painted per channel
+        /// and shown without alpha compositing, so colour channels survive where alpha is 0.
+        /// </summary>
+        public bool IsMask;
         public readonly List<PaintLayer> Layers = new List<PaintLayer>();
 
         public RenderTexture StrokeMask { get; private set; }
         public StrokeKind Stroke { get; private set; }
         public Color StrokeColor { get; private set; }
         public float StrokeOpacity { get; private set; }
+        /// <summary>Channel strokes: 1 for every RGBA channel that moves towards the stroke colour.</summary>
+        public Vector4 StrokeChannels { get; private set; }
 
         int activeIndex;
         int strokeVersion;
@@ -68,7 +77,10 @@ namespace MeshTexturePainter
 
         // ------------------------------------------------------------------ strokes
 
-        public void BeginStroke(StrokeKind kind, Color color, float opacity)
+        public void BeginStroke(StrokeKind kind, Color color, float opacity) => BeginStroke(kind, color, opacity, Vector4.one);
+
+        /// <param name="channels">Channel strokes: 1 for every RGBA channel that moves towards the colour.</param>
+        public void BeginStroke(StrokeKind kind, Color color, float opacity, Vector4 channels)
         {
             if (StrokeMask == null)
                 StrokeMask = RTUtil.Create("MTP Stroke Mask", Width, Height, RenderTextureFormat.RHalf, filter: FilterMode.Point);
@@ -76,6 +88,7 @@ namespace MeshTexturePainter
             Stroke = kind;
             StrokeColor = color;
             StrokeOpacity = opacity;
+            StrokeChannels = channels;
             strokeVersion++;
         }
 
@@ -111,6 +124,7 @@ namespace MeshTexturePainter
             mat.SetFloat(Ids.StrokeOpacity, StrokeOpacity);
             var c = StrokeColor;
             mat.SetVector(Ids.BrushColor, new Vector4(c.r, c.g, c.b, c.a));
+            mat.SetVector(Ids.StrokeChannels, StrokeChannels);
             mat.SetFloat(Ids.LockAlpha, layer.lockAlpha ? 1f : 0f);
             mat.SetTexture(Ids.StrokeMask, StrokeMask != null ? (Texture)StrokeMask : Texture2D.blackTexture);
         }
@@ -159,6 +173,19 @@ namespace MeshTexturePainter
             int key = Key(0, Layers.Count, true);
             if (key == compositeKey && composite != null) return composite;
             EnsureBuffers();
+
+            if (IsMask)
+            {
+                // A mask is its one layer with the pending stroke applied. Alpha compositing
+                // would drop the colour channels wherever the mask's alpha is 0.
+                var layer = ActiveLayer;
+                var commit = PaintResources.Blit;
+                SetStrokeUniforms(commit, layer, true);
+                RTUtil.SetTexSize(commit, Width, Height);
+                RTUtil.Blit(layer.texture, composite, commit, PaintResources.BlitCommit);
+                compositeKey = key;
+                return composite;
+            }
 
             int active = Math.Max(0, ActiveIndex);
             int below = Key(0, active, false);
@@ -236,6 +263,19 @@ namespace MeshTexturePainter
         {
             var result = RTUtil.CreateLayerTexture(Width, Height, "MTP Layer");
             RTUtil.Clear(result, color);
+            return result;
+        }
+
+        /// <summary>Sets the given channels of a layer texture to a value (or inverts them) and returns the result.</summary>
+        public RenderTexture RenderChannelOperation(RenderTexture source, Vector4 channels, bool invert, float value)
+        {
+            var result = RTUtil.CreateLayerTexture(Width, Height, source.name);
+            var mat = PaintResources.Blit;
+            RTUtil.SetTexSize(mat, Width, Height);
+            mat.SetVector(Ids.ChannelMask, channels);
+            mat.SetFloat(Ids.ChannelInvert, invert ? 1f : 0f);
+            mat.SetVector(Ids.FillColor, new Vector4(value, value, value, value));
+            RTUtil.Blit(source, result, mat, PaintResources.BlitChannels);
             return result;
         }
 

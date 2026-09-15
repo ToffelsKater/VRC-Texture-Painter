@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace MeshTexturePainter
 {
@@ -204,10 +205,17 @@ namespace MeshTexturePainter
             var uvMat = PaintResources.UVSpace;
             var blit = PaintResources.Blit;
 
+            // Masks are data: mix the stored values, treat alpha as a plain channel
+            // and only write the channels of the selected mask colour.
+            bool mask = active[0].Document.IsMask;
+            var writeMask = mask ? MaskChannels.WriteMask(s.maskChannel) : ColorWriteMask.Red | ColorWriteMask.Green | ColorWriteMask.Blue;
+
             foreach (var mirror in Mirrors(s, active[0].Target))
             {
                 // 1. capture every texture as seen around the brush (shared depth: the nearest surface wins)
                 SetBrushUniforms(viewMat, cam, s, d, mirror, tool);
+                if (mask) viewMat.SetFloat(Ids.MixSpace, (float)ColorMixSpace.Srgb);
+                viewMat.SetFloat(Ids.IgnoreAlpha, mask ? 1f : 0f);
                 viewMat.SetMatrix(Ids.CaptureVP, captureVP);
                 viewMat.SetFloat(Ids.WeightByBrush, average ? 1f : 0f);
                 CaptureParts(active, viewMat, buffers.color, buffers.depth, PaintResources.ViewCaptureColor);
@@ -230,6 +238,8 @@ namespace MeshTexturePainter
 
                 // 3. write back through texture space
                 SetBrushUniforms(uvMat, cam, s, d, mirror, tool);
+                if (mask) uvMat.SetFloat(Ids.MixSpace, (float)ColorMixSpace.Srgb);
+                uvMat.SetFloat(Ids.ColorWriteMask, (float)writeMask);
                 uvMat.SetFloat(Ids.DabStrength, d.strength);
                 uvMat.SetFloat(Ids.Seed, (float)random.NextDouble() * 1000f);
                 uvMat.SetFloat(Ids.TargetMode, average ? 1f : 0f);
@@ -245,7 +255,7 @@ namespace MeshTexturePainter
                     var cmd = PaintResources.Cmd;
                     cmd.SetRenderTarget(layer.texture);
                     cmd.DrawMesh(mesh, Matrix4x4.identity, uvMat, 0, PaintResources.UVApplyRGB);
-                    if (s.affectAlpha && !layer.lockAlpha)
+                    if (!mask && s.affectAlpha && !layer.lockAlpha)
                     {
                         cmd.DrawMesh(mesh, Matrix4x4.identity, uvMat, 0, PaintResources.UVApplyAlphaMul);
                         cmd.DrawMesh(mesh, Matrix4x4.identity, uvMat, 0, PaintResources.UVApplyAlphaAdd);

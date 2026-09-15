@@ -1,6 +1,7 @@
 using System;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace MeshTexturePainter
 {
@@ -46,6 +47,63 @@ namespace MeshTexturePainter
         Z = 2
     }
 
+    /// <summary>
+    /// What the mask painter paints. Red, green and blue each move only their own
+    /// channel, so masks painted in different channels add up in the same spot.
+    /// </summary>
+    public enum MaskChannel
+    {
+        Red = 0,
+        Green = 1,
+        Blue = 2,
+        /// <summary>Every colour channel towards 1.</summary>
+        White = 3,
+        /// <summary>Every colour channel towards 0.</summary>
+        Black = 4
+    }
+
+    internal static class MaskChannels
+    {
+        /// <summary>1 for every RGBA channel the mask colour changes. Alpha is never painted.</summary>
+        public static Vector4 Weights(MaskChannel c)
+        {
+            switch (c)
+            {
+                case MaskChannel.Red: return new Vector4(1f, 0f, 0f, 0f);
+                case MaskChannel.Green: return new Vector4(0f, 1f, 0f, 0f);
+                case MaskChannel.Blue: return new Vector4(0f, 0f, 1f, 0f);
+                default: return new Vector4(1f, 1f, 1f, 0f);
+            }
+        }
+
+        public static ColorWriteMask WriteMask(MaskChannel c)
+        {
+            switch (c)
+            {
+                case MaskChannel.Red: return ColorWriteMask.Red;
+                case MaskChannel.Green: return ColorWriteMask.Green;
+                case MaskChannel.Blue: return ColorWriteMask.Blue;
+                default: return ColorWriteMask.Red | ColorWriteMask.Green | ColorWriteMask.Blue;
+            }
+        }
+
+        /// <summary>The value a brush moves the channels towards.</summary>
+        public static float Value(MaskChannel c) => c == MaskChannel.Black ? 0f : 1f;
+
+        /// <summary>Colour of the channel in the window and the brush cursor.</summary>
+        public static Color Display(MaskChannel c)
+        {
+            switch (c)
+            {
+                case MaskChannel.Red: return new Color(1f, 0.2f, 0.2f);
+                case MaskChannel.Green: return new Color(0.2f, 0.9f, 0.2f);
+                case MaskChannel.Blue: return new Color(0.3f, 0.5f, 1f);
+                case MaskChannel.White: return Color.white;
+                default: return Color.black;
+            }
+        }
+    }
+
     [Serializable]
     public class ToolSettings
     {
@@ -70,9 +128,13 @@ namespace MeshTexturePainter
     {
         const string PrefsKey = "MeshTexturePainter.BrushSettings";
 
+        [NonSerialized] string prefsKey = PrefsKey;
+
         public PaintTool tool = PaintTool.SoftBrush;
         public Color color = Color.white;
         public Color secondaryColor = Color.black;
+        /// <summary>Mask painting: the channels the brushes paint.</summary>
+        public MaskChannel maskChannel = MaskChannel.Red;
 
         public ToolSettings hard = new ToolSettings(20f, 1f, 1f, 0.08f);
         public ToolSettings soft = new ToolSettings(40f, 1f, 0f, 0.08f);
@@ -120,19 +182,24 @@ namespace MeshTexturePainter
         public static bool UsesColor(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush;
         public static bool UsesHardness(PaintTool t) => t != PaintTool.HardBrush;
         public static bool IsStrokeBuffered(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Eraser;
+        /// <summary>The mask painter has no colour blend brush; blur covers smoothing masks.</summary>
+        public static bool UsableForMasks(PaintTool t) => t != PaintTool.ColorBlend;
 
-        public static BrushSettings Load()
+        public static BrushSettings Load() => Load(PrefsKey);
+
+        /// <summary>Loads settings stored under their own key, so the texture and mask painters keep separate brushes.</summary>
+        public static BrushSettings Load(string key)
         {
-            var settings = new BrushSettings();
-            var json = EditorPrefs.GetString(PrefsKey, null);
+            var settings = new BrushSettings { prefsKey = key };
+            var json = EditorPrefs.GetString(key, null);
             if (!string.IsNullOrEmpty(json))
             {
                 try { JsonUtility.FromJsonOverwrite(json, settings); }
-                catch (Exception) { settings = new BrushSettings(); }
+                catch (Exception) { settings = new BrushSettings { prefsKey = key }; }
             }
             return settings;
         }
 
-        public void Save() => EditorPrefs.SetString(PrefsKey, JsonUtility.ToJson(this));
+        public void Save() => EditorPrefs.SetString(prefsKey, JsonUtility.ToJson(this));
     }
 }

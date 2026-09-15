@@ -35,6 +35,7 @@ namespace MeshTexturePainter
         public int[] slots = { 0 };
         public int padding = 16;
         public int activeLayer;
+        public int mode;                    // PaintMode: 0 colour layers, 1 mask
         public PartMeta[] parts;
 
         // version 1 files (a single texture) kept the texture settings here
@@ -115,6 +116,19 @@ namespace MeshTexturePainter
             writer.Write(data);
         }
 
+        /// <summary>Reads only the header of a project, e.g. to tell colour and mask projects apart before loading any pixels.</summary>
+        public static ProjectMeta ReadMeta(string path)
+        {
+            using (var stream = File.OpenRead(path))
+            using (var reader = new BinaryReader(stream))
+            {
+                var magic = reader.ReadBytes(MagicV2.Length);
+                if (!magic.SequenceEqual(MagicV1) && !magic.SequenceEqual(MagicV2))
+                    throw new InvalidDataException("Not a VRC Texture Painter project file.");
+                return JsonUtility.FromJson<ProjectMeta>(reader.ReadString());
+            }
+        }
+
         /// <summary>Loads every painted texture of a project (in the order of meta.parts).</summary>
         public static List<PaintDocument> Load(string path, out ProjectMeta meta)
         {
@@ -151,7 +165,7 @@ namespace MeshTexturePainter
                     for (int d = 0; d < docCount; d++)
                     {
                         var pm = meta.parts[d];
-                        var doc = new PaintDocument(pm.width, pm.height) { IsSRGB = pm.srgb };
+                        var doc = new PaintDocument(pm.width, pm.height) { IsSRGB = pm.srgb, IsMask = meta.mode == (int)PaintMode.Mask };
                         docs.Add(doc);
                         int count = reader.ReadInt32();
                         for (int i = 0; i < count; i++) doc.Layers.Add(ReadLayer(reader, doc, i));
@@ -244,7 +258,7 @@ namespace MeshTexturePainter
         }
 
         /// <summary>Gives a newly exported texture the import settings of the texture it replaces.</summary>
-        public static void CopyImporterSettings(string fromAssetPath, string toAssetPath, bool srgbFallback)
+        public static void CopyImporterSettings(string fromAssetPath, string toAssetPath, bool srgbFallback, bool alphaIsTransparencyFallback = true)
         {
             var dst = AssetImporter.GetAtPath(toAssetPath) as TextureImporter;
             if (dst == null) return;
@@ -268,7 +282,7 @@ namespace MeshTexturePainter
             else
             {
                 dst.sRGBTexture = srgbFallback;
-                dst.alphaIsTransparency = true;
+                dst.alphaIsTransparency = alphaIsTransparencyFallback;
                 dst.streamingMipmaps = true;
                 dst.maxTextureSize = 8192;
             }

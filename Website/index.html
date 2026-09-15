@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {{~ latest = packages | array.first ~}}
   <title>VRC Texture Painter · Paint your avatar in Unity</title>
-  <meta name="description" content="Blender style texture painting for VRChat avatars, right in the Unity Scene view. Brushes follow the model across UV seams, mirrored UVs and multiple UV channels.">
+  <meta name="description" content="Blender style texture painting for VRChat avatars, right in the Unity Scene view. Brushes follow the model across UV seams, mirrored UVs and multiple UV channels, and the mask painter paints shader masks channel by channel.">
   <meta name="theme-color" content="#15121c" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f6f2ec" media="(prefers-color-scheme: light)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="VRC Texture Painter">
-  <meta property="og:description" content="Paint your VRChat avatar right in Unity, the way Blender's Texture Paint mode works.">
+  <meta property="og:description" content="Paint your VRChat avatar right in Unity, the way Blender's Texture Paint mode works, and paint shader masks channel by channel.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -52,6 +52,7 @@
       <nav class="topnav" aria-label="Sections">
         <a href="#features">Features</a>
         <a href="#uvs">UV layouts</a>
+        <a href="#masks">Masks</a>
         <a href="#install">Install</a>
         <a class="icon-link" href="https://github.com/ToffelsKater/VRC-Texture-Painter" target="_blank" rel="noopener" aria-label="GitHub repository">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
@@ -150,6 +151,11 @@
           <p>Hard, Soft, Blur, Color Blend and Eraser, with pen pressure, spacing and hardness, plus a colour picker.</p>
         </article>
         <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9.5" r="5.5"/><circle cx="15" cy="9.5" r="5.5"/><circle cx="12" cy="15" r="5.5"/></svg>
+          <h3>Mask painter</h3>
+          <p>A second tab paints the shader's mask slots, such as <code>_EmissionMask</code>. Red, green and blue keep to their own channel, so one texture holds three masks.</p>
+        </article>
+        <article class="feature">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 15c4-5 8 3 18-4"/></svg>
           <h3>Seamless blending</h3>
           <p>Color Blend turns hard borders into smooth gradients without smearing, and mixes colours perceptually so midpoints don't go muddy.</p>
@@ -225,6 +231,71 @@
         <span><kbd>7</kbd> Eraser</span>
         <span><kbd>C</kbd> Pick colour</span>
         <span><kbd>[</kbd> <kbd>]</kbd> Size</span>
+      </div>
+    </section>
+
+    <!-- Masks -->
+    <section id="masks" class="section wrap">
+      <div class="section-head">
+        <p class="eyebrow">Mask painter</p>
+        <h2>Masks that add up instead of overwriting</h2>
+        <p class="section-lead">The second tab paints the shader's mask slots, from Poiyomi's <code>_EmissionMask</code> to the Standard shader's <code>_DetailMask</code>. Each colour channel is painted on its own, so one texture can carry three masks at once.</p>
+      </div>
+      <div class="uv-grid">
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <rect x="16" y="22" width="168" height="76" rx="8" class="mini-island"/>
+            <path d="M42 56h62" stroke="#ff5c5c" stroke-width="18" stroke-linecap="round" fill="none"/>
+            <path d="M96 56h62" stroke="#4fd06a" stroke-width="18" stroke-linecap="round" fill="none"/>
+            <path d="M96 56h8" stroke="#ffd34f" stroke-width="18" fill="none"/>
+            <text x="42" y="88" class="ill-caption small">Red mask</text>
+            <text x="120" y="88" class="ill-caption small">Green mask</text>
+          </svg>
+          <h3>One texture, three masks</h3>
+          <p>Paint red, then green over the same spot: the red mask stays and green is added on top of it. White raises every channel, Black clears them, and alpha is never touched.</p>
+        </article>
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <defs>
+              <linearGradient id="redFade" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#ff5c5c"/>
+                <stop offset="0.55" stop-color="#ff5c5c"/>
+                <stop offset="1" stop-color="#ff5c5c" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect x="16" y="20" width="168" height="36" rx="8" class="mini-island"/>
+            <rect x="26" y="29" width="148" height="18" rx="9" fill="url(#redFade)"/>
+            <text x="26" y="72" class="ill-caption small">R blurred</text>
+            <rect x="16" y="78" width="168" height="30" rx="8" class="mini-island"/>
+            <rect x="26" y="85" width="74" height="16" rx="8" fill="#4fd06a"/>
+            <text x="112" y="98" class="ill-caption small">G untouched</text>
+          </svg>
+          <h3>Brushes stay in their channel</h3>
+          <p>Hard, Soft and Blur only move the channel you picked, and the Eraser takes it back to zero. Fill, Clear and Invert do the same to the whole mask.</p>
+        </article>
+        <article class="uv-card">
+          <svg viewBox="0 0 200 120" aria-hidden="true">
+            <circle cx="62" cy="60" r="36" fill="url(#shade)"/>
+            <path d="M44 58c12-10 26-12 38-4" stroke="#ff5c5c" stroke-width="12" stroke-linecap="round" fill="none"/>
+            <path d="M108 60h22" class="ill-seam"/>
+            <rect x="138" y="28" width="48" height="64" rx="8" class="mini-island"/>
+            <path d="M148 58c8-6 18-7 28-3" stroke="#ff5c5c" stroke-width="9" stroke-linecap="round" fill="none"/>
+          </svg>
+          <h3>See what you paint</h3>
+          <p><strong>Show Mask On Model</strong> puts the mask in place of the main texture, so you can see a mask even while the effect it drives is switched off.</p>
+        </article>
+      </div>
+
+      <div class="keys" aria-label="Mask channels and brushes">
+        <span class="keys-title">Paint</span>
+        <span class="chan" style="--chan:#ff5c5c">R</span>
+        <span class="chan" style="--chan:#4fd06a">G</span>
+        <span class="chan" style="--chan:#5c8dff">B</span>
+        <span class="chan" style="--chan:#ffffff">White</span>
+        <span class="chan" style="--chan:#101014">Black</span>
+        <span><kbd>3</kbd> <kbd>4</kbd> Hard, Soft</span>
+        <span><kbd>5</kbd> Blur</span>
+        <span><kbd>7</kbd> Eraser</span>
       </div>
     </section>
 

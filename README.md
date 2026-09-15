@@ -26,6 +26,7 @@ materials while you paint.
 ## Features
 
 - **Brushes:** Hard, Soft, Blur, Color Blend (turns hard borders into smooth gradients without smearing) and Eraser, with pen pressure.
+- **Mask painter:** a second tab that paints the shader's mask slots per channel. Red, green and blue masks add up in one texture instead of overwriting each other.
 - **UV aware:** paint across seams, on mirrored and overlapping UVs, any UV channel, and UVs outside 0–1.
 - **Several textures at once:** for example a Poiyomi body texture on UV0 and a face decal on UV2, painted in one stroke.
 - **Layers:** 13 blend modes, opacity, visibility, lock transparency, merge down, fill and image import.

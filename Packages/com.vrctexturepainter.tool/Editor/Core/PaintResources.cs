@@ -27,6 +27,7 @@ namespace MeshTexturePainter
         public const int BlitBlur = 6;
         public const int BlitImport = 7;
         public const int BlitFill = 8;
+        public const int BlitChannels = 9;
 
         static Material uvSpace, viewSpace, blit, gui;
         static CommandBuffer commandBuffer;
@@ -153,6 +154,11 @@ namespace MeshTexturePainter
         public static readonly int UVFlip = Shader.PropertyToID("_UVFlip");
         public static readonly int WrapMode = Shader.PropertyToID("_WrapMode");
         public static readonly int MixSpace = Shader.PropertyToID("_MixSpace");
+        public static readonly int StrokeChannels = Shader.PropertyToID("_StrokeChannels");
+        public static readonly int ChannelMask = Shader.PropertyToID("_ChannelMask");
+        public static readonly int ChannelInvert = Shader.PropertyToID("_ChannelInvert");
+        public static readonly int IgnoreAlpha = Shader.PropertyToID("_IgnoreAlpha");
+        public static readonly int ColorWriteMask = Shader.PropertyToID("_ColorWriteMask");
 
         public static readonly int BrushVP = Shader.PropertyToID("_BrushVP");
         public static readonly int WorldToView = Shader.PropertyToID("_WorldToView");

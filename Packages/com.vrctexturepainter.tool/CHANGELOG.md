@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0] - 2026-09-16
+
+### Added
+
+- **Mask Painter** tab that paints the mask slots of a shader, such as Poiyomi's `_EmissionMask` or the Standard shader's `_DetailMask`.
+- Paint **R**, **G**, **B**, **White** or **Black**. Red, green and blue only change their own channel, so masks painted in different channels add up in the same spot instead of replacing each other. Alpha is never painted.
+- Hard, Soft, Blur and Eraser on masks: Blur softens only the selected channel, the Eraser takes it back to 0.
+- **Fill**, **Clear** and **Invert** for the selected channel on the whole mask, with undo.
+- **Show Mask On Model** puts the mask in place of the material's main texture while painting, so you can see it even when the effect it drives is off.
+- Mask projects are saved as `.mtpaint` files and reopen in the Mask Painter tab.
+
+### Changed
+
+- The window now has two tabs, Texture Painter and Mask Painter, each with its own brush settings and its own session.
+- The Texture Painter no longer lists mask slots; they belong to the Mask Painter.
+
 ## [1.0.0] - 2026-09-11
 
 First release.

@@ -32,6 +32,9 @@ Shader "Hidden/MeshTexturePainter/Blit"
     float4 _BlurDir;        // xy uv step per tap
     float _BlurSigma;       // in taps
     float4 _FillColor;
+    float4 _StrokeChannels; // channel strokes (masks): 1 for every channel moved towards _BrushColor
+    float4 _ChannelMask;    // channel operation: 1 for every channel changed
+    float _ChannelInvert;   // channel operation: 0 set to _FillColor, 1 invert
 
     static const float INVALID = 30000.0;
 
@@ -68,6 +71,8 @@ Shader "Hidden/MeshTexturePainter/Blit"
     {
         if (_StrokeMode < 0.5) return L;
         float m = saturate(_StrokeMask.Load(int3(t, 0)).r) * _StrokeOpacity;
+        // masks: only the stroke's channels move, so masks in other channels stay
+        if (_StrokeMode > 2.5) return lerp(L, _BrushColor, _StrokeChannels * m);
         if (_StrokeMode < 1.5)
         {
             m *= _BrushColor.a;
@@ -172,6 +177,13 @@ Shader "Hidden/MeshTexturePainter/Blit"
     {
         return _FillColor;
     }
+
+    float4 frag_channels(v2f_img i) : SV_Target
+    {
+        float4 c = _MainTex.Load(int3(TexelOf(i.uv), 0));
+        float4 target = _ChannelInvert > 0.5 ? 1.0 - c : _FillColor;
+        return lerp(c, target, _ChannelMask);
+    }
     ENDCG
 
     SubShader
@@ -248,6 +260,14 @@ Shader "Hidden/MeshTexturePainter/Blit"
             CGPROGRAM
             #pragma vertex vert_img
             #pragma fragment frag_fill
+            ENDCG
+        }
+        // 9: set or invert single channels (mask fill / clear / invert)
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag_channels
             ENDCG
         }
     }
