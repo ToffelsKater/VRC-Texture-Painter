@@ -8,6 +8,9 @@ Shader "Hidden/MeshTexturePainter/UVSpace"
     {
         // Channels blur / blend write, as UnityEngine.Rendering.ColorWriteMask (14 = RGB)
         _ColorWriteMask ("Color Write Mask", Float) = 14
+        // Vertical direction of texture space rendering, calibrated at runtime (see PaintResources.CalibrateUVFlip).
+        // Declared so the material keeps it readable when the shader is reimported.
+        _UVFlip ("UV Flip", Float) = 1
     }
 
     CGINCLUDE
@@ -66,6 +69,16 @@ Shader "Hidden/MeshTexturePainter/UVSpace"
     {
         float a = BrushWeight(i.wpos, i.wnormal) * _DabStrength;
         return float4(a, a, a, a);
+    }
+
+    // Gradient line: coverage in red, position along the line in green. Texels the
+    // line does not reach are discarded so they never raise the position.
+    float4 frag_gradient(v2f_uvspace i) : SV_Target
+    {
+        float t;
+        float a = BrushWeightT(i.wpos, i.wnormal, t) * _DabStrength;
+        if (a <= 0.0) discard;
+        return float4(a, t, 0, 0);
     }
 
     float4 frag_apply_rgb(v2f_uvspace i) : SV_Target
@@ -152,6 +165,17 @@ Shader "Hidden/MeshTexturePainter/UVSpace"
             CGPROGRAM
             #pragma vertex vert_uvspace
             #pragma fragment frag_apply_alpha_add
+            ENDCG
+        }
+
+        // 5: gradient line into the stroke mask (max)
+        Pass
+        {
+            BlendOp Max
+            Blend One One
+            CGPROGRAM
+            #pragma vertex vert_uvspace
+            #pragma fragment frag_gradient
             ENDCG
         }
     }

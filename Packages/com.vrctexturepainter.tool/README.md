@@ -2,9 +2,9 @@
 
 Paint textures directly on your avatar in the Unity Scene view, the way Blender's
 Texture Paint mode works. It has hard and soft brushes, a blur brush, a colour
-blend brush, an eraser, and a Photoshop style layer stack. Painting works in 3D,
-so strokes stay continuous across UV seams and land correctly on mirrored or
-overlapping UVs and on any UV channel.
+blend brush, an eraser, a gradient line tool, and a Photoshop style layer stack.
+Painting works in 3D, so strokes stay continuous across UV seams and land
+correctly on mirrored or overlapping UVs and on any UV channel.
 
 Built for VRChat avatar creators on **Unity 2022.3.22f1 (DX11, Built-in render
 pipeline, Linear colour space)**. The tool is editor only. It adds no components
@@ -28,11 +28,11 @@ Then open **Tools > VRC Texture Painter**.
 
 ## Quick start
 
-1. Select the avatar's body mesh (or right click the *Skinned Mesh Renderer* component and choose **Paint Texture**). To paint the shader's masks instead, use the **Mask Painter** tab (see [Mask painter](#mask-painter)).
+1. Select the avatar's body mesh (or right click the *Skinned Mesh Renderer* component and choose **Paint Texture**). To paint masks instead, use the **Mask Painter** tab (see [Mask painter](#mask-painter)).
 2. In the window, click **Use Selection**, then check the material slots, the texture property (usually `_MainTex`) and the UV channel (usually `UV0`).
 3. Click **Start Painting**. The current texture becomes the *Base* layer, and an empty *Layer 1* is added above it for painting.
 4. Paint in the Scene view with the left mouse button. Alt + drag still orbits.
-5. Use **Export PNG...** to write the flattened texture and assign it to the material, or **Overwrite Source** to replace the original PNG.
+5. Use **Export PNG...** to write the flattened texture and assign it to the material, or **Overwrite Source** to replace the PNG the material uses. When the slot has no texture yet, **Create Texture...** takes the place of Overwrite Source: it saves a new PNG and assigns it, and from then on Overwrite Source updates that file. To skip the save dialog, drag a folder from the Project window into **Output Folder**: Export PNG and Create Texture then save straight into it, named after the material and texture property (for example `Body_EmissionMask.png`), and add a number instead of replacing an existing file. The folder is remembered per project.
 6. **Save** writes a `.mtpaint` project with every layer, so you can keep editing later.
 
 ## Brushes
@@ -44,17 +44,27 @@ Then open **Tools > VRC Texture Painter**.
 | Blur | `5` / Num `3` | Moves each texel towards the average of its neighbourhood. *Blur Size* sets the kernel width |
 | Blend | `6` / Num `4` | Blends the colours under the brush into a smooth, seamless transition. *Blend Width* sets how long the gradient is; *Flatten* mode pulls the area towards one average colour instead |
 | Eraser | `7` / Num `5` | Removes paint from the layer (makes it transparent) |
+| Gradient | `8` / Num `6` | Drag from one point to another to paint a straight line of the set *Width*, coloured from the first colour at the start to the second colour at the end |
 
 Hard, soft and eraser strokes use **Opacity** the way Photoshop does: a stroke
 never builds up past its opacity, however often you go over the same spot.
 Blur and blend use **Strength** per dab.
+
+The **Gradient** works like the line tool in Krita, but fills the line with a
+gradient instead of one colour. Press where the line starts and drag to where it
+ends. The line updates on the model while you drag and is painted when you
+release. Hold `Shift` to snap its angle to 15° steps, and press `Esc` to cancel it.
+The gradient only covers the line, not the whole texture, and the line has flat
+ends. *Hardness* softens its long edges, and **Mix Colors In** sets how the two
+colours blend. The line is always measured on screen, so *Falloff Shape* and pen
+pressure do not apply to it.
 
 The Blend brush reads the colours as they were when the stroke started. Dragging
 it across a border blends that border into a gradient without carrying colour
 along the stroke (no smearing), and going over the same spot again only brings
 it closer to the finished gradient.
 
-**Mix Colors In** (Blur and Blend) decides how colours are averaged:
+**Mix Colors In** (Blur, Blend and Gradient) decides how colours are averaged:
 
 - *Perceptual* (default, OKLab) gives even transitions without dark, muddy midpoints.
 - *Linear* mixes like light and gives brighter midpoints.
@@ -85,11 +95,11 @@ The window has two tabs. **Texture Painter** is the colour painter described
 above. **Mask Painter** paints the mask textures of a shader.
 
 1. Pick the renderer and material slots as usual.
-2. Under **Mask Texture**, pick one of the shader's mask slots and its UV channel.
-   Mask slots are the texture slots whose property name or label contains "mask",
-   such as Poiyomi's `_EmissionMask` or the Standard shader's `_DetailMask`. Only
-   mask slots are listed here, and the Texture Painter lists every other texture
-   slot. A slot without a texture starts black.
+2. Under **Mask Texture**, pick one of the shader's texture slots and its UV channel.
+   The Texture Painter only lists the main texture (`_MainTex`, or the slot the
+   shader marks as `[MainTexture]`) and Poiyomi decal textures. Every other slot,
+   such as Poiyomi's `_EmissionMask`, Standard's `_DetailMask` or a normal map, is
+   listed here. A slot without a texture starts black.
 3. Click **Start Painting Mask** and choose what to paint: **R**, **G**, **B**,
    **White** or **Black**.
 
@@ -103,7 +113,11 @@ every colour channel. Alpha is never painted and stays as it is.
 | Hard / Soft | `3` / `4` | Move the selected channel(s) towards 1 (Black: towards 0), up to the opacity |
 | Blur | `5` | Softens only the selected channel(s) |
 | Eraser | `7` | Takes the selected channel(s) back to 0 |
+| Gradient | `8` | A line from the mixed R / G / B colour at its start to black at its end |
 
+- The **Gradient** has its own **R**, **G** and **B** toggles, which mix its start
+  colour. Turn on R and G for a yellow to black gradient, for example. Only the
+  mixed channels change, so masks in the other channels stay.
 - **Fill**, **Clear** and **Invert** change the selected channel(s) on the whole mask.
 - **Show Mask On Model** also puts the mask in place of the material's main
   texture, so you can see where it is painted even when the effect it drives is off.
@@ -122,7 +136,8 @@ every colour channel. Alpha is never painted and stays as it is.
 | `Shift` + `[` / `]` | Less / more strength |
 | `Ctrl` + scroll | Radius |
 | `Ctrl` + `Shift` + scroll | Strength |
-| `3` – `7` or Num `1` – `5` | Hard, Soft, Blur, Blend, Eraser |
+| `3` – `8` or Num `1` – `6` | Hard, Soft, Blur, Blend, Eraser, Gradient |
+| `Shift` while dragging a gradient | Snap the line to 15° steps |
 | `C` or Num `0` | Pick the colour under the cursor |
 | Right mouse + `WASD` / `QE` | Fly through the scene as usual; painting keys are ignored meanwhile |
 | `Esc` | Cancel the current stroke |
@@ -208,7 +223,7 @@ thin lines along seams. The default is 16 texels, and you can change it under
 The [GitHub repository](https://github.com/ToffelsKater/VRC-Texture-Painter) has a
 GPU test suite in `Assets/MeshTexturePainterTests`, which is not part of the
 installed package. It covers brush placement, seams, padding, blur and blend,
-occlusion, blend modes, multiple textures, undo, save/load, export and skinned
+occlusion, blend modes, gradients, masks, multiple textures, undo, save/load, export and skinned
 meshes. Run it headless in the repository's Unity project. It quits Unity when
 done and returns exit code 0 on success:
 

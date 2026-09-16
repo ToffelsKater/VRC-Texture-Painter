@@ -37,6 +37,10 @@ namespace MeshTexturePainter
         public float StrokeOpacity { get; private set; }
         /// <summary>Channel strokes: 1 for every RGBA channel that moves towards the stroke colour.</summary>
         public Vector4 StrokeChannels { get; private set; }
+        /// <summary>Gradient strokes: the colour runs from StrokeColor to StrokeEndColor along the line stored in the stroke mask's green channel.</summary>
+        public bool StrokeGradient { get; private set; }
+        public Color StrokeEndColor { get; private set; }
+        public ColorMixSpace StrokeMixSpace { get; private set; }
 
         int activeIndex;
         int strokeVersion;
@@ -82,13 +86,31 @@ namespace MeshTexturePainter
         /// <param name="channels">Channel strokes: 1 for every RGBA channel that moves towards the colour.</param>
         public void BeginStroke(StrokeKind kind, Color color, float opacity, Vector4 channels)
         {
+            // red: coverage, green: position along a gradient line
             if (StrokeMask == null)
-                StrokeMask = RTUtil.Create("MTP Stroke Mask", Width, Height, RenderTextureFormat.RHalf, filter: FilterMode.Point);
+                StrokeMask = RTUtil.Create("MTP Stroke Mask", Width, Height, RenderTextureFormat.RGHalf, filter: FilterMode.Point);
             RTUtil.Clear(StrokeMask, Color.clear);
             Stroke = kind;
             StrokeColor = color;
             StrokeOpacity = opacity;
             StrokeChannels = channels;
+            StrokeGradient = false;
+            strokeVersion++;
+        }
+
+        /// <summary>A stroke whose colour runs from `start` to `end` along the gradient line, mixed in `mixSpace`.</summary>
+        public void BeginGradientStroke(StrokeKind kind, Color start, Color end, ColorMixSpace mixSpace, float opacity, Vector4 channels)
+        {
+            BeginStroke(kind, start, opacity, channels);
+            StrokeGradient = true;
+            StrokeEndColor = end;
+            StrokeMixSpace = mixSpace;
+        }
+
+        /// <summary>Empties the stroke mask of the stroke in progress, before a gradient line is drawn again.</summary>
+        public void ClearStrokeMask()
+        {
+            if (StrokeMask != null) RTUtil.Clear(StrokeMask, Color.clear);
             strokeVersion++;
         }
 
@@ -125,6 +147,10 @@ namespace MeshTexturePainter
             var c = StrokeColor;
             mat.SetVector(Ids.BrushColor, new Vector4(c.r, c.g, c.b, c.a));
             mat.SetVector(Ids.StrokeChannels, StrokeChannels);
+            mat.SetFloat(Ids.StrokeGradient, active && StrokeGradient ? 1f : 0f);
+            var e = StrokeEndColor;
+            mat.SetVector(Ids.BrushColor2, new Vector4(e.r, e.g, e.b, e.a));
+            mat.SetFloat(Ids.MixSpace, (float)StrokeMixSpace);
             mat.SetFloat(Ids.LockAlpha, layer.lockAlpha ? 1f : 0f);
             mat.SetTexture(Ids.StrokeMask, StrokeMask != null ? (Texture)StrokeMask : Texture2D.blackTexture);
         }

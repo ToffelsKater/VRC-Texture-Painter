@@ -35,6 +35,8 @@ namespace MeshTexturePainter.Tests
                 MultiTexturePaint();
                 BlendTransition();
                 MaskPaint();
+                GradientPaint();
+                MaskGradient();
             }
             catch (Exception e)
             {
@@ -1093,8 +1095,9 @@ namespace MeshTexturePainter.Tests
             // each painter lists its own texture slots
             var masks = MeshTexturePainterWindow.MaskProperties(mr.sharedMaterial);
             var colors = MeshTexturePainterWindow.ColorTextureProperties(mr.sharedMaterial);
-            Check(masks.Contains("_DetailMask") && !masks.Contains("_MainTex") && colors.Contains("_MainTex") && !colors.Contains("_DetailMask") && !colors.Intersect(masks).Any(),
-                $"mask painter lists only masks [{string.Join(", ", masks)}], texture painter no masks [{string.Join(", ", colors)}]");
+            Check(masks.Contains("_DetailMask") && masks.Contains("_BumpMap") && !masks.Contains("_MainTex")
+                    && colors.SequenceEqual(new[] { "_MainTex" }) && !colors.Intersect(masks).Any(),
+                $"mask painter lists every slot but the main texture [{string.Join(", ", masks)}], texture painter only the main texture [{string.Join(", ", colors)}]");
 
             var doc = session.Document;
             var s = session.Settings;
@@ -1222,6 +1225,166 @@ namespace MeshTexturePainter.Tests
                 Check(c.b > 0.99f && c.a < 0.01f, "reopened mask keeps colour at zero alpha " + Str(c));
                 reopened.Dispose();
             }
+
+            session.Dispose();
+            Cleanup(mr, cam);
+        }
+
+        static Vector2 ScreenPixel(Camera cam, Vector3 world)
+        {
+            var sp = cam.WorldToScreenPoint(world);
+            return new Vector2(sp.x, sp.y);
+        }
+
+        /// <summary>The gradient tests paint away from the world origin, where a shape mix-up once hid every triangle.</summary>
+        static readonly Vector3 GradientOffset = new Vector3(3f, 1.5f, 2f);
+
+        static void MoveAwayFromOrigin(Camera cam, MeshRenderer mr)
+        {
+            cam.transform.position += GradientOffset;
+            mr.transform.position += GradientOffset;
+        }
+
+        /// <summary>
+        /// Gradient: a band between two points, coloured from the first to the second colour
+        /// along it, with flat ends; redrawing replaces the line, a click paints nothing.
+        /// </summary>
+        static void GradientPaint()
+        {
+            var cam = MakeCamera(true);
+            var mr = MakeQuads((R(-1, -1, 1, 1), 0f, R(0, 0, 1, 1)));
+            MoveAwayFromOrigin(cam, mr);
+            var session = PaintSession.Create(mr, new[] { 0 }, 0, "_MainTex", Size, Size, 8, new BrushSettings(), out string error);
+            Check(session != null, "gradient session " + error);
+            if (session == null)
+            {
+                Cleanup(mr, cam);
+                return;
+            }
+            var doc = session.Document;
+            var s = session.Settings;
+            s.color = Color.red;
+            s.secondaryColor = Color.blue;
+            s.mixSpace = ColorMixSpace.Srgb;
+            s.gradient.radius = 20f;
+            s.gradient.strength = 1f;
+            s.gradient.hardness = 1f;
+            Vector2 start = ScreenPixel(cam, GradientOffset + new Vector3(-0.8f, 0f, 0f)), end = ScreenPixel(cam, GradientOffset + new Vector3(0.8f, 0f, 0f));
+            Color At(float u, float v = 0.5f) => Pixel(doc.ActiveLayer.texture, u, v);
+
+            // a click without dragging adds no history step
+            int steps = session.History.Count;
+            session.BeginStrokeCore(PaintTool.Gradient);
+            session.ApplyGradient(cam, start, start);
+            session.EndStroke();
+            Check(session.History.Count == steps && At(0.1f).a < 0.01f, "a click draws no gradient");
+
+            // the line follows the mouse: a first vertical line is replaced by the horizontal one
+            session.BeginStrokeCore(PaintTool.Gradient);
+            session.ApplyGradient(cam, ScreenPixel(cam, GradientOffset + new Vector3(0f, -0.8f, 0f)), ScreenPixel(cam, GradientOffset + new Vector3(0f, 0.8f, 0f)));
+            session.ApplyGradient(cam, start, end);
+            var pending = Pixel(doc.GetComposite(), 0.5f, 0.5f);
+            Check(Mathf.Abs(pending.r - 0.5f) < 0.05f && Mathf.Abs(pending.b - 0.5f) < 0.05f, "pending gradient shows in the composite " + Str(pending));
+            session.EndStroke();
+
+            var first = At(0.12f);
+            var middle = At(0.5f);
+            var last = At(0.88f);
+            Check(first.r > 0.9f && first.b < 0.1f && first.a > 0.99f, "gradient starts with the first colour " + Str(first));
+            Check(Mathf.Abs(middle.r - 0.5f) < 0.05f && Mathf.Abs(middle.b - 0.5f) < 0.05f && middle.a > 0.99f, "gradient is halfway in the middle " + Str(middle));
+            Check(last.b > 0.9f && last.r < 0.1f, "gradient ends with the second colour " + Str(last));
+            Check(At(0.95f).a < 0.01f && At(0.05f).a < 0.01f, $"flat ends: nothing beyond the line {Str(At(0.05f))} {Str(At(0.95f))}");
+            Check(At(0.5f, 0.75f).a < 0.01f && At(0.5f, 0.52f).a > 0.99f, $"the band has the set width {Str(At(0.5f, 0.52f))} {Str(At(0.5f, 0.75f))}");
+            Check(At(0.5f, 0.2f).a < 0.01f, "the replaced vertical line is gone " + Str(At(0.5f, 0.2f)));
+            Check(session.History.UndoName == "Gradient", "gradient undo step " + session.History.UndoName);
+
+            // colours mix in the chosen space: linear light gives a brighter midpoint
+            session.History.PerformUndo();
+            Check(At(0.5f).a < 0.01f, "undo removes the gradient " + Str(At(0.5f)));
+            s.mixSpace = ColorMixSpace.Linear;
+            session.BeginStrokeCore(PaintTool.Gradient);
+            session.ApplyGradient(cam, start, end);
+            session.EndStroke();
+            var linear = At(0.5f);
+            Check(Mathf.Abs(linear.r - 0.735f) < 0.05f && Mathf.Abs(linear.b - 0.735f) < 0.05f, "linear gradient midpoint " + Str(linear));
+
+            // opacity scales the whole line
+            session.History.PerformUndo();
+            s.mixSpace = ColorMixSpace.Srgb;
+            s.gradient.strength = 0.5f;
+            session.BeginStrokeCore(PaintTool.Gradient);
+            session.ApplyGradient(cam, start, end);
+            session.EndStroke();
+            Check(Mathf.Abs(At(0.12f).a - 0.5f) < 0.03f, "gradient opacity " + Str(At(0.12f)));
+
+            Check(session.HandleKeyEvent(new Event { type = EventType.KeyDown, keyCode = KeyCode.Alpha8 }) && s.tool == PaintTool.Gradient, "8 selects the gradient");
+
+            session.Dispose();
+            Cleanup(mr, cam);
+        }
+
+        /// <summary>Mask gradient: the mixed R, G and B channels run to black; other channels and alpha stay.</summary>
+        static void MaskGradient()
+        {
+            var cam = MakeCamera(true);
+            var mr = MakeQuads((R(-1, -1, 1, 1), 0f, R(0, 0, 1, 1)));
+            MoveAwayFromOrigin(cam, mr);
+            var specs = new[] { new PartSpec { textureProperty = "_DetailMask", uvChannel = 0, width = Size, height = Size } };
+            var session = PaintSession.Create(mr, new[] { 0 }, specs, 8, new BrushSettings(), out string error, PaintMode.Mask);
+            Check(session != null && session.IsMask, "mask gradient session " + error);
+            if (session == null)
+            {
+                Cleanup(mr, cam);
+                return;
+            }
+            var doc = session.Document;
+            var s = session.Settings;
+            s.maskChannel = MaskChannel.Blue;
+            session.ApplyMaskOperation(MaskOperation.Fill);
+
+            s.gradientChannels = 1 | 2;
+            s.gradient.radius = 20f;
+            s.gradient.strength = 1f;
+            s.gradient.hardness = 1f;
+            session.BeginStrokeCore(PaintTool.Gradient);
+            session.ApplyGradient(cam, ScreenPixel(cam, GradientOffset + new Vector3(-0.8f, 0f, 0f)), ScreenPixel(cam, GradientOffset + new Vector3(0.8f, 0f, 0f)));
+            session.EndStroke();
+            Color At(float u, float v = 0.5f) => Pixel(doc.ActiveLayer.texture, u, v);
+
+            var first = At(0.12f);
+            var middle = At(0.5f);
+            var last = At(0.88f);
+            Check(first.r > 0.95f && first.g > 0.95f && first.b > 0.99f && first.a > 0.99f, "mask gradient starts at the mixed colour and keeps blue " + Str(first));
+            Check(Mathf.Abs(middle.r - 0.5f) < 0.05f && Mathf.Abs(middle.g - 0.5f) < 0.05f && middle.b > 0.99f, "mask gradient halfway " + Str(middle));
+            Check(last.r < 0.05f && last.g < 0.05f && last.b > 0.99f && last.a > 0.99f, "mask gradient ends black in the mixed channels " + Str(last));
+            var outside = At(0.5f, 0.75f);
+            Check(outside.r < 0.01f && outside.g < 0.01f && outside.b > 0.99f, "mask gradient stays inside the line " + Str(outside));
+
+            // an empty slot has no source until its texture is created and assigned; then that file is the source
+            const string created = "Assets/MTPTestCreatedMask.png";
+            Check(session.SourceTexturePath(0) == null, "an empty mask slot has no source texture");
+            var texture = session.ExportTexture(0, created, true);
+            Check(texture != null && mr.sharedMaterial.GetTexture("_DetailMask") == texture, "creating the texture assigns it to the empty slot");
+            Check(session.SourceTexturePath(0) == created, "the created texture becomes the source " + session.SourceTexturePath(0));
+            var importer = AssetImporter.GetAtPath(created) as TextureImporter;
+            Check(importer != null && !importer.sRGBTexture && !importer.alphaIsTransparency, "a created mask imports as linear data");
+            var reexported = session.ExportTexture(0, session.SourceTexturePath(0), false);
+            Check(reexported == texture && mr.sharedMaterial.GetTexture("_DetailMask") == texture, "overwriting the created source keeps the assignment");
+            AssetDatabase.DeleteAsset(created);
+
+            // output folder: safe file names, never an existing file
+            AssetDatabase.CreateFolder("Assets", "MTPTestOut");
+            string firstPath = MeshTexturePainterWindow.UniqueTexturePath("Assets/MTPTestOut", "Body: Nsfw_EmissionMask");
+            Check(firstPath == "Assets/MTPTestOut/Body_ Nsfw_EmissionMask.png", "output folder path with a safe name " + firstPath);
+            session.ExportTexture(0, firstPath, false);
+            string secondPath = MeshTexturePainterWindow.UniqueTexturePath("Assets/MTPTestOut", "Body: Nsfw_EmissionMask");
+            Check(secondPath != firstPath && secondPath.StartsWith("Assets/MTPTestOut/Body_ Nsfw_EmissionMask") && secondPath.EndsWith(".png"), "output folder does not replace an existing texture " + secondPath);
+            var folderAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>("Assets/MTPTestOut");
+            var fileAsset = AssetDatabase.LoadAssetAtPath<Texture2D>(firstPath);
+            Check(MeshTexturePainterWindow.FolderOf(folderAsset) == "Assets/MTPTestOut" && MeshTexturePainterWindow.FolderOf(fileAsset) == "Assets/MTPTestOut"
+                    && MeshTexturePainterWindow.FolderOf(null) == null && MeshTexturePainterWindow.FolderOf(mr.gameObject) == null,
+                $"output folder from a folder or a file in it: {MeshTexturePainterWindow.FolderOf(folderAsset)} {MeshTexturePainterWindow.FolderOf(fileAsset)}");
+            AssetDatabase.DeleteAsset("Assets/MTPTestOut");
 
             session.Dispose();
             Cleanup(mr, cam);

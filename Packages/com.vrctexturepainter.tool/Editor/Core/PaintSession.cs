@@ -119,6 +119,7 @@ namespace MeshTexturePainter
         bool strokeHadDabs;
         Vector2 lastGui;
         float distanceToNextDab;
+        Vector2 gradientStartGui, gradientEndGui;
 
         // cursor
         Vector2 cursorGui;
@@ -562,6 +563,8 @@ namespace MeshTexturePainter
                     break;
                 case KeyCode.Alpha7:
                 case KeyCode.Keypad5: Settings.tool = PaintTool.Eraser; break;
+                case KeyCode.Alpha8:
+                case KeyCode.Keypad6: Settings.tool = PaintTool.Gradient; break;
                 case KeyCode.C:
                 case KeyCode.Keypad0:
                     if (!PickColorUnderCursor()) return false;
@@ -604,11 +607,19 @@ namespace MeshTexturePainter
         void DrawCursor(SceneView view)
         {
             if (!cursorInView) return;
-            var tool = Settings.Current;
+            bool gradientLine = stroking && strokeTool == PaintTool.Gradient;
+            var tool = gradientLine ? Settings.gradient : Settings.Current;
             float radiusPoints = tool.radius / EditorGUIUtility.pixelsPerPoint;
-            Color ring = IsMask ? (Settings.tool == PaintTool.Blur ? Color.white : MaskChannels.Display(Settings.maskChannel))
+            Color ring = IsMask ? (Settings.tool == PaintTool.Blur ? Color.white
+                    : Settings.tool == PaintTool.Gradient ? MaskChannels.GradientDisplay(Settings.gradientChannels)
+                    : MaskChannels.Display(Settings.maskChannel))
                 : BrushSettings.UsesColor(Settings.tool) ? Settings.color : Color.white;
             ring.a = 1f;
+            if (gradientLine)
+            {
+                DrawGradientLine(radiusPoints, ring);
+                return;
+            }
 
             Handles.BeginGUI();
             var center = new Vector3(cursorGui.x, cursorGui.y, 0f);
@@ -629,7 +640,7 @@ namespace MeshTexturePainter
             }
             Handles.EndGUI();
 
-            if (cursorHasHit && Settings.falloffShape == FalloffShape.Sphere)
+            if (cursorHasHit && Settings.falloffShape == FalloffShape.Sphere && Settings.tool != PaintTool.Gradient)
             {
                 var cam = view.camera;
                 float pixelWorld = 2f / (Mathf.Abs(cam.projectionMatrix.m11) * cam.pixelHeight);
@@ -637,6 +648,32 @@ namespace MeshTexturePainter
                 Handles.color = new Color(ring.r, ring.g, ring.b, 0.5f);
                 Handles.DrawWireDisc(cursorHit.point, cursorHit.normal, tool.radius * pixelWorld * depth);
             }
+        }
+
+        /// <summary>The band the gradient paints, with its start and end colours.</summary>
+        void DrawGradientLine(float halfWidthPoints, Color start)
+        {
+            Vector2 a = gradientStartGui, b = gradientEndGui;
+            var dir = b - a;
+            var n = dir.sqrMagnitude > 1e-4f ? new Vector2(-dir.y, dir.x).normalized * halfWidthPoints : Vector2.zero;
+            var outline = new Vector3[] { a + n, b + n, b - n, a - n, a + n };
+            Color end = IsMask ? Color.black : Settings.secondaryColor;
+            end.a = 1f;
+
+            Handles.BeginGUI();
+            Handles.color = new Color(0f, 0f, 0f, 0.6f);
+            Handles.DrawAAPolyLine(4f, outline);
+            Handles.color = new Color(1f, 1f, 1f, 0.9f);
+            Handles.DrawAAPolyLine(2f, outline);
+            Handles.DrawAAPolyLine(1f, a, b);
+            foreach (var (point, color) in new[] { (a, start), (b, end) })
+            {
+                Handles.color = color.grayscale < 0.2f ? Color.white : Color.black;
+                Handles.DrawSolidDisc(point, Vector3.forward, 6f);
+                Handles.color = color;
+                Handles.DrawSolidDisc(point, Vector3.forward, 4.5f);
+            }
+            Handles.EndGUI();
         }
 
         static float Pressure(Event e) => e.pointerType == PointerType.Pen ? Mathf.Clamp01(e.pressure) : 1f;
@@ -651,6 +688,12 @@ namespace MeshTexturePainter
             Engine.PrepareCamera(view.camera, Target);
             BeginStrokeCore(Settings.tool);
             lastGui = e.mousePosition;
+            if (strokeTool == PaintTool.Gradient)
+            {
+                // the line is drawn once the mouse moves away from its start
+                gradientStartGui = gradientEndGui = e.mousePosition;
+                return;
+            }
             DabAt(view, e.mousePosition, Pressure(e));
             distanceToNextDab = Spacing();
         }
@@ -663,7 +706,19 @@ namespace MeshTexturePainter
             strokeTool = tool;
             strokeHadDabs = false;
             strokeLayers = parts.Select(p => p.Document.ActiveLayer).ToArray();
-            if (BrushSettings.IsStrokeBuffered(tool) && IsMask)
+            if (tool == PaintTool.Gradient)
+            {
+                float opacity = Settings.gradient.strength;
+                foreach (var part in parts)
+                {
+                    // masks: the mixed channels run from 1 at the start of the line to 0 (black) at its end
+                    if (IsMask)
+                        part.Document.BeginGradientStroke(StrokeKind.Channel, Color.white, Color.clear, ColorMixSpace.Srgb, opacity, MaskChannels.GradientWeights(Settings.gradientChannels));
+                    else
+                        part.Document.BeginGradientStroke(StrokeKind.Paint, Settings.color, Settings.secondaryColor, Settings.mixSpace, opacity, Vector4.one);
+                }
+            }
+            else if (BrushSettings.IsStrokeBuffered(tool) && IsMask)
             {
                 // masks: only the selected channels move, towards 1 (Black and the eraser: 0)
                 var channel = Settings.maskChannel;
@@ -694,6 +749,12 @@ namespace MeshTexturePainter
         void ContinueStroke(SceneView view, Event e)
         {
             if (!stroking) return;
+            if (strokeTool == PaintTool.Gradient)
+            {
+                gradientEndGui = e.shift ? SnapAngle(gradientStartGui, e.mousePosition) : e.mousePosition;
+                ApplyGradient(view.camera, HandleUtility.GUIPointToScreenPixelCoordinate(gradientStartGui), HandleUtility.GUIPointToScreenPixelCoordinate(gradientEndGui));
+                return;
+            }
             Vector2 p = e.mousePosition;
             Vector2 delta = p - lastGui;
             float length = delta.magnitude;
@@ -708,6 +769,26 @@ namespace MeshTexturePainter
             }
             distanceToNextDab = s - length;
             lastGui = p;
+        }
+
+        /// <summary>Shift while dragging a gradient: the line snaps to 15 degree steps.</summary>
+        static Vector2 SnapAngle(Vector2 start, Vector2 end)
+        {
+            var d = end - start;
+            float step = 15f * Mathf.Deg2Rad;
+            float angle = Mathf.Round(Mathf.Atan2(d.y, d.x) / step) * step;
+            return start + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * d.magnitude;
+        }
+
+        /// <summary>Draws the gradient line of the current stroke between two screen pixels, replacing the line drawn before.</summary>
+        internal void ApplyGradient(Camera cam, Vector2 startPixel, Vector2 endPixel)
+        {
+            if (!stroking || strokeTool != PaintTool.Gradient) return;
+            Engine.PrepareCamera(cam, Target);
+            var input = new DabInput { screenPixel = startPixel, lineEnd = endPixel, radius = Settings.gradient.radius, strength = 1f };
+            foreach (var part in parts) Engine.GradientDab(part.Document, part.Target, cam, Settings, input);
+            strokeHadDabs = (endPixel - startPixel).sqrMagnitude >= 1f;
+            previewDirty = true;
         }
 
         void DabAt(SceneView view, Vector2 guiPoint, float pressure)
@@ -731,7 +812,7 @@ namespace MeshTexturePainter
         /// <summary>One dab of the current stroke into every texture.</summary>
         internal void ApplyDab(Camera cam, DabInput input)
         {
-            if (!stroking) return;
+            if (!stroking || strokeTool == PaintTool.Gradient) return;
             Engine.PrepareCamera(cam, Target);
             if (BrushSettings.IsStrokeBuffered(strokeTool))
             {
@@ -751,6 +832,13 @@ namespace MeshTexturePainter
             if (!stroking) return;
             stroking = false;
             foreach (var part in parts) part.FilterSource = null;
+            if (strokeTool == PaintTool.Gradient && !strokeHadDabs)
+            {
+                // a click without dragging draws no line
+                foreach (var part in parts) part.Document.CancelStroke();
+                MarkChanged();
+                return;
+            }
             string name = ObjectNames.NicifyVariableName(strokeTool.ToString());
             var steps = new List<HistoryStep>();
             if (BrushSettings.IsStrokeBuffered(strokeTool))
@@ -1026,6 +1114,44 @@ namespace MeshTexturePainter
             Changed?.Invoke();
         }
 
+        /// <summary>
+        /// The texture file of a part: the texture its property shows on the painted material
+        /// slots (an exported and assigned painting counts), otherwise the texture the painting
+        /// started from. Null while the slot has no texture file yet.
+        /// </summary>
+        public string SourceTexturePath(int partIndex)
+        {
+            var part = parts[partIndex];
+            var renderer = part.Target.Renderer;
+            if (renderer != null)
+            {
+                var materials = renderer.sharedMaterials;
+                foreach (int slot in part.Target.Slots)
+                {
+                    var mat = slot < materials.Length ? materials[slot] : null;
+                    if (mat == null || !mat.HasProperty(part.Meta.textureProperty)) continue;
+                    var texture = mat.GetTexture(part.Meta.textureProperty);
+                    string path = texture != null ? AssetDatabase.GetAssetPath(texture) : null;
+                    if (!string.IsNullOrEmpty(path)) return path;
+                }
+            }
+            return string.IsNullOrEmpty(part.Meta.sourceTexturePath) ? null : part.Meta.sourceTexturePath;
+        }
+
+        /// <summary>The asset folder of the first painted material, or null for materials that are not assets.</summary>
+        public string MaterialFolder(int partIndex)
+        {
+            var part = parts[partIndex];
+            if (part.Target.Renderer == null) return null;
+            var materials = part.Target.Renderer.sharedMaterials;
+            foreach (int slot in part.Target.Slots)
+            {
+                string path = slot < materials.Length && materials[slot] != null ? AssetDatabase.GetAssetPath(materials[slot]) : null;
+                if (!string.IsNullOrEmpty(path) && path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase)) return Path.GetDirectoryName(path);
+            }
+            return null;
+        }
+
         public Texture2D ExportTexture(string assetPath, bool assignToMaterials) => ExportTexture(0, assetPath, assignToMaterials);
 
         /// <summary>Exports one flattened texture to an asset path and optionally assigns it to its property on the painted slots.</summary>
@@ -1033,12 +1159,13 @@ namespace MeshTexturePainter
         {
             var part = parts[partIndex];
             var pm = part.Meta;
+            string source = SourceTexturePath(partIndex);
             string fullPath = Path.GetFullPath(assetPath);
             bool overwriting = File.Exists(fullPath);
             PaintProjectIO.ExportPng(part.Document, part.Target.PadMap, part.Target.WrapVector, fullPath);
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
-            if (!overwriting || assetPath != pm.sourceTexturePath)
-                PaintProjectIO.CopyImporterSettings(pm.sourceTexturePath, assetPath, part.Document.IsSRGB, alphaIsTransparencyFallback: !IsMask);
+            if (!overwriting || assetPath != source)
+                PaintProjectIO.CopyImporterSettings(source, assetPath, part.Document.IsSRGB, alphaIsTransparencyFallback: !IsMask);
 
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
             pm.exportPath = assetPath;

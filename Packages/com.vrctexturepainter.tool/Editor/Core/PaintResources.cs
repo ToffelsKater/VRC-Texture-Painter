@@ -13,6 +13,7 @@ namespace MeshTexturePainter
         public const int UVApplyRGB = 2;
         public const int UVApplyAlphaMul = 3;
         public const int UVApplyAlphaAdd = 4;
+        public const int UVGradient = 5;
 
         public const int ViewDepth = 0;
         public const int ViewCaptureColor = 1;
@@ -142,6 +143,8 @@ namespace MeshTexturePainter
         public static readonly int StrokeMode = Shader.PropertyToID("_StrokeMode");
         public static readonly int StrokeOpacity = Shader.PropertyToID("_StrokeOpacity");
         public static readonly int BrushColor = Shader.PropertyToID("_BrushColor");
+        public static readonly int BrushColor2 = Shader.PropertyToID("_BrushColor2");
+        public static readonly int StrokeGradient = Shader.PropertyToID("_StrokeGradient");
         public static readonly int LockAlpha = Shader.PropertyToID("_LockAlpha");
         public static readonly int ToLinear = Shader.PropertyToID("_ToLinear");
         public static readonly int ToGamma = Shader.PropertyToID("_ToGamma");
@@ -165,6 +168,7 @@ namespace MeshTexturePainter
         public static readonly int Mirror = Shader.PropertyToID("_Mirror");
         public static readonly int ScreenSize = Shader.PropertyToID("_ScreenSize");
         public static readonly int BrushCenter = Shader.PropertyToID("_BrushCenter");
+        public static readonly int LineEnd = Shader.PropertyToID("_LineEnd");
         public static readonly int BrushWorld = Shader.PropertyToID("_BrushWorld");
         public static readonly int CamPos = Shader.PropertyToID("_CamPos");
         public static readonly int CamForward = Shader.PropertyToID("_CamForward");

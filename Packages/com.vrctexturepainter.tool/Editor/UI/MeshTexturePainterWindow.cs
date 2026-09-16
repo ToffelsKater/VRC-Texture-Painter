@@ -15,11 +15,12 @@ namespace MeshTexturePainter
         const string RestoreProjectKey = "MeshTexturePainter.RestoreProjectPath";
         const string RestoreDirtyKey = "MeshTexturePainter.RestoreDirty";
         const string MaskSettingsKey = "MeshTexturePainter.MaskBrushSettings";
+        const string OutputFolderKey = "MeshTexturePainter.OutputFolder";
         static readonly int[] Resolutions = { 0, 512, 1024, 2048, 4096, 8192 };
         static readonly string[] ResolutionNames = { "Source size of each texture", "512", "1024", "2048", "4096", "8192" };
-        static readonly string[] ToolNames = { "Hard", "Soft", "Blur", "Blend", "Eraser" };
-        static readonly PaintTool[] MaskTools = { PaintTool.HardBrush, PaintTool.SoftBrush, PaintTool.Blur, PaintTool.Eraser };
-        static readonly string[] MaskToolNames = { "Hard", "Soft", "Blur", "Eraser" };
+        static readonly string[] ToolNames = { "Hard", "Soft", "Blur", "Blend", "Eraser", "Gradient" };
+        static readonly PaintTool[] MaskTools = { PaintTool.HardBrush, PaintTool.SoftBrush, PaintTool.Blur, PaintTool.Eraser, PaintTool.Gradient };
+        static readonly string[] MaskToolNames = { "Hard", "Soft", "Blur", "Eraser", "Gradient" };
         static readonly string[] MaskChannelNames = { "R", "G", "B", "White", "Black" };
         static readonly string[] TabNames = { "Texture Painter", "Mask Painter" };
         static readonly TextureWrapMode[] WrapOptions = { TextureWrapMode.Repeat, TextureWrapMode.Repeat, TextureWrapMode.Clamp, TextureWrapMode.Mirror, TextureWrapMode.MirrorOnce };
@@ -66,6 +67,8 @@ namespace MeshTexturePainter
         readonly List<PaintLayer> displayLayers = new List<PaintLayer>();
         Material thumbnailMaterial;
         string lastError;
+        /// <summary>Why the last object dropped on the output folder field was not used. Shown under the field only.</summary>
+        string outputFolderHint;
 
         PainterTab Tab => tabIndex == 1 ? maskTab : colorTab;
         PainterTab[] Tabs => new[] { colorTab, maskTab };
@@ -296,25 +299,20 @@ namespace MeshTexturePainter
             return list;
         }
 
-        /// <summary>Texture slots the mask painter lists: the ones named as masks.</summary>
+        /// <summary>Texture slots the mask painter lists: every slot except the main texture and decals.</summary>
         internal static List<string> MaskProperties(Material mat) =>
-            TextureProperties(mat).Where(p => IsMaskProperty(mat.shader, p)).ToList();
+            TextureProperties(mat).Where(p => !IsColorProperty(mat.shader, p)).ToList();
 
-        /// <summary>Texture slots the texture painter lists: everything except masks, which belong to the mask painter.</summary>
+        /// <summary>Texture slots the texture painter lists: the main texture and decals. Every other slot belongs to the mask painter.</summary>
         internal static List<string> ColorTextureProperties(Material mat) =>
-            TextureProperties(mat).Where(p => !IsMaskProperty(mat.shader, p)).ToList();
+            TextureProperties(mat).Where(p => IsColorProperty(mat.shader, p)).ToList();
 
-        /// <summary>A mask slot by property name or inspector label (Poiyomi, lilToon and Standard all say "mask").</summary>
-        static bool IsMaskProperty(Shader shader, string property)
+        /// <summary>The main texture (_MainTex or the shader's [MainTexture]) or a Poiyomi decal texture.</summary>
+        static bool IsColorProperty(Shader shader, string property)
         {
-            if (property.IndexOf("mask", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (property == "_MainTex" || property.StartsWith("_DecalTexture", StringComparison.Ordinal)) return true;
             int index = shader.FindPropertyIndex(property);
-            if (index < 0) return false;
-            // Thry (Poiyomi) labels append options after "--{", which can name other, mask properties
-            string label = shader.GetPropertyDescription(index);
-            int options = label.IndexOf("--{", StringComparison.Ordinal);
-            if (options >= 0) label = label.Substring(0, options);
-            return label.IndexOf("mask", StringComparison.OrdinalIgnoreCase) >= 0;
+            return index >= 0 && (shader.GetPropertyFlags(index) & ShaderPropertyFlags.MainTexture) != 0;
         }
 
         /// <summary>Poiyomi stores the UV channel of each texture in a "&lt;property&gt;UV" float (0-3 = UV0-UV3).</summary>
@@ -505,7 +503,7 @@ namespace MeshTexturePainter
         /// <summary>The texture list of the texture painter. Returns false when the setup cannot start.</summary>
         bool DrawTextureSetup(PainterTab tab, Material firstMat, string[] uvNames)
         {
-            // mask slots are painted in the mask painter
+            // every slot but the main texture and decals is painted in the mask painter
             var props = ColorTextureProperties(firstMat);
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField(new GUIContent("Textures",
@@ -553,7 +551,7 @@ namespace MeshTexturePainter
             return !duplicate;
         }
 
-        /// <summary>The mask slot of the mask painter: one mask texture of the shader. Returns false when the setup cannot start.</summary>
+        /// <summary>The slot of the mask painter: one texture of the shader other than the main texture and decals. Returns false when the setup cannot start.</summary>
         bool DrawMaskTextureSetup(PainterTab tab, Material firstMat, string[] uvNames)
         {
             var masks = MaskProperties(firstMat);
@@ -568,11 +566,11 @@ namespace MeshTexturePainter
 
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField(new GUIContent("Mask Texture",
-                "The mask slot of the shader to paint, with the UV channel the shader reads it with. Red, green and blue are painted separately, so several masks can share one texture."), EditorStyles.boldLabel);
+                "The texture slot of the shader to paint, with the UV channel the shader reads it with. Every slot except the main texture and decals is listed here. Red, green and blue are painted separately, so several masks can share one texture."), EditorStyles.boldLabel);
             if (masks.Count == 0)
             {
                 EditorGUILayout.HelpBox(firstMat != null
-                    ? $"The shader '{firstMat.shader.name}' has no mask slot (a texture slot named as a mask). Paint its other textures in the Texture Painter."
+                    ? $"The shader '{firstMat.shader.name}' has no texture slot besides its main texture and decals. Paint those in the Texture Painter."
                     : "The selected material slots have no material.", MessageType.Warning);
                 return false;
             }
@@ -699,7 +697,8 @@ namespace MeshTexturePainter
                 if (!BrushSettings.UsableForMasks(settings.tool)) settings.tool = PaintTool.SoftBrush;
                 int index = GUILayout.Toolbar(Array.IndexOf(MaskTools, settings.tool), MaskToolNames, GUILayout.Height(24));
                 settings.tool = MaskTools[index];
-                DrawMaskChannels(settings);
+                if (settings.tool == PaintTool.Gradient) DrawGradientChannels(settings);
+                else DrawMaskChannels(settings);
             }
             else
             {
@@ -708,7 +707,10 @@ namespace MeshTexturePainter
                 {
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        settings.color = EditorGUILayout.ColorField(new GUIContent("Color"), settings.color, true, true, false);
+                        var colorLabel = settings.tool == PaintTool.Gradient
+                            ? new GUIContent("Colors", "The gradient runs from the first colour at the start of the line to the second colour at its end.")
+                            : new GUIContent("Color");
+                        settings.color = EditorGUILayout.ColorField(colorLabel, settings.color, true, true, false);
                         settings.secondaryColor = EditorGUILayout.ColorField(GUIContent.none, settings.secondaryColor, true, true, false, GUILayout.Width(50));
                         if (GUILayout.Button(new GUIContent("⇄", "Swap colours"), GUILayout.Width(24)))
                             (settings.color, settings.secondaryColor) = (settings.secondaryColor, settings.color);
@@ -717,12 +719,17 @@ namespace MeshTexturePainter
             }
             var tool = settings.Current;
 
-            tool.radius = EditorGUILayout.Slider(new GUIContent("Radius (px)", "[ and ] or Ctrl + scroll"), tool.radius, 1f, 500f);
+            bool gradient = settings.tool == PaintTool.Gradient;
+            if (gradient)
+                tool.radius = EditorGUILayout.Slider(new GUIContent("Width (px)", "Thickness of the gradient line. [ and ] or Ctrl + scroll"), tool.radius * 2f, 2f, 1000f) * 0.5f;
+            else
+                tool.radius = EditorGUILayout.Slider(new GUIContent("Radius (px)", "[ and ] or Ctrl + scroll"), tool.radius, 1f, 500f);
             string strengthLabel = BrushSettings.IsStrokeBuffered(settings.tool) ? "Opacity" : "Strength";
             tool.strength = EditorGUILayout.Slider(new GUIContent(strengthLabel, "Shift + [ and ] or Ctrl + Shift + scroll"), tool.strength, 0f, 1f);
             if (BrushSettings.UsesHardness(settings.tool))
-                tool.hardness = EditorGUILayout.Slider("Hardness", tool.hardness, 0f, 1f);
-            tool.spacing = EditorGUILayout.Slider(new GUIContent("Spacing", "Distance between dabs as a fraction of the radius"), tool.spacing, 0.02f, 1f);
+                tool.hardness = EditorGUILayout.Slider(new GUIContent("Hardness", gradient ? "How sharp the long edges of the line are. Lower values fade them out." : null), tool.hardness, 0f, 1f);
+            if (!gradient)
+                tool.spacing = EditorGUILayout.Slider(new GUIContent("Spacing", "Distance between dabs as a fraction of the radius"), tool.spacing, 0.02f, 1f);
             if (settings.tool == PaintTool.Blur)
                 settings.blurSize = EditorGUILayout.Slider(new GUIContent("Blur Size", "Blur kernel as a fraction of the radius"), settings.blurSize, 0.02f, 1f);
             if (settings.tool == PaintTool.ColorBlend)
@@ -732,18 +739,23 @@ namespace MeshTexturePainter
                 if (settings.blendMode == ColorBlendMode.Transition)
                     settings.blendWidth = EditorGUILayout.Slider(new GUIContent("Blend Width", "How wide the colour transition is, relative to the brush. Small values only soften hard edges, large values make long gradients."), settings.blendWidth, 0.05f, 1f);
             }
-            if (!tab.IsMask && (settings.tool == PaintTool.Blur || settings.tool == PaintTool.ColorBlend))
+            if (!tab.IsMask && (settings.tool == PaintTool.Blur || settings.tool == PaintTool.ColorBlend || gradient))
             {
                 settings.mixSpace = (ColorMixSpace)EditorGUILayout.EnumPopup(new GUIContent("Mix Colors In",
                     "Perceptual: even, natural transitions without muddy midpoints (OKLab).\nLinear: physically correct light mixing, brighter midpoints.\nSrgb: the texture's stored values, like Photoshop; midpoints between saturated colours look darker."), settings.mixSpace);
-                settings.affectAlpha = EditorGUILayout.Toggle("Affect Alpha", settings.affectAlpha);
+                if (!gradient) settings.affectAlpha = EditorGUILayout.Toggle("Affect Alpha", settings.affectAlpha);
             }
+            if (gradient)
+                EditorGUILayout.HelpBox("Drag from the start to the end of the line in the Scene view. Hold Shift to snap the angle to 15° steps.", MessageType.None);
 
             strokeFoldout = EditorGUILayout.Foldout(strokeFoldout, "Stroke Options", true);
             if (strokeFoldout)
             {
                 EditorGUI.indentLevel++;
-                settings.falloffShape = (FalloffShape)EditorGUILayout.EnumPopup(new GUIContent("Falloff Shape", "Projected: a circle on screen, paints everything visible inside it.\nSphere: a ball around the surface under the cursor, never reaches surfaces behind."), settings.falloffShape);
+                using (new EditorGUI.DisabledScope(gradient))
+                    settings.falloffShape = (FalloffShape)EditorGUILayout.EnumPopup(new GUIContent("Falloff Shape", gradient
+                        ? "The gradient always paints the line as seen on screen."
+                        : "Projected: a circle on screen, paints everything visible inside it.\nSphere: a ball around the surface under the cursor, never reaches surfaces behind."), settings.falloffShape);
                 settings.occlusion = EditorGUILayout.Toggle(new GUIContent("Occlusion", "Only paint surfaces visible from the camera."), settings.occlusion);
                 settings.backfaceCulling = EditorGUILayout.Toggle(new GUIContent("Backface Culling", "Do not paint faces pointing away from the camera."), settings.backfaceCulling);
                 using (new EditorGUILayout.HorizontalScope())
@@ -758,8 +770,11 @@ namespace MeshTexturePainter
                     using (new EditorGUI.DisabledScope(!settings.mirror))
                         settings.mirrorAxis = (MirrorAxis)EditorGUILayout.EnumPopup(settings.mirrorAxis);
                 }
-                settings.pressureSize = EditorGUILayout.Toggle("Pen Pressure → Size", settings.pressureSize);
-                settings.pressureStrength = EditorGUILayout.Toggle("Pen Pressure → Strength", settings.pressureStrength);
+                using (new EditorGUI.DisabledScope(gradient))
+                {
+                    settings.pressureSize = EditorGUILayout.Toggle("Pen Pressure → Size", settings.pressureSize);
+                    settings.pressureStrength = EditorGUILayout.Toggle("Pen Pressure → Strength", settings.pressureStrength);
+                }
                 EditorGUI.indentLevel--;
             }
             if (EditorGUI.EndChangeCheck())
@@ -785,6 +800,33 @@ namespace MeshTexturePainter
                     EditorGUI.DrawRect(new Rect(rect.x + 4, rect.yMax - 4, rect.width - 8, 2), MaskChannels.Display(channel));
                 }
             }
+        }
+
+        /// <summary>Mask gradient: R, G and B toggles that mix the start colour; the gradient runs from it to black.</summary>
+        static void DrawGradientChannels(BrushSettings settings)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PrefixLabel(new GUIContent("Gradient",
+                    "Mix R, G and B into the start colour. The gradient runs from that colour at the start of the line to black at its end, and only changes the mixed channels, so masks in the other channels stay."));
+                for (int i = 0; i < 3; i++)
+                {
+                    int bit = 1 << i;
+                    var style = i == 0 ? EditorStyles.miniButtonLeft : i == 2 ? EditorStyles.miniButtonRight : EditorStyles.miniButtonMid;
+                    bool on = GUILayout.Toggle((settings.gradientChannels & bit) != 0, MaskChannelNames[i], style, GUILayout.Height(20));
+                    settings.gradientChannels = on ? settings.gradientChannels | bit : settings.gradientChannels & ~bit;
+                    var rect = GUILayoutUtility.GetLastRect();
+                    EditorGUI.DrawRect(new Rect(rect.x + 4, rect.yMax - 4, rect.width - 8, 2), MaskChannels.Display((MaskChannel)i));
+                }
+                var swatches = GUILayoutUtility.GetRect(64, 20, GUILayout.Width(64));
+                var start = new Rect(swatches.x + 6, swatches.y + 3, 20, swatches.height - 6);
+                var end = new Rect(start.xMax + 18, start.y, 20, start.height);
+                EditorGUI.DrawRect(start, MaskChannels.GradientDisplay(settings.gradientChannels));
+                GUI.Label(new Rect(start.xMax, swatches.y, 18, swatches.height), "→", EditorStyles.centeredGreyMiniLabel);
+                EditorGUI.DrawRect(end, Color.black);
+            }
+            if (settings.gradientChannels == 0)
+                EditorGUILayout.HelpBox("Pick at least one channel for the gradient.", MessageType.Warning);
         }
 
         // ------------------------------------------------------------------ mask
@@ -1008,6 +1050,9 @@ namespace MeshTexturePainter
             if (EditorGUI.EndChangeCheck()) session.RebuildPadding(Mathf.Clamp(newPadding, 0, 256));
 
             assignOnExport = EditorGUILayout.Toggle(new GUIContent("Assign To Material", "After exporting, set the texture on the painted material slots."), assignOnExport);
+            DrawOutputFolder();
+            string outputFolder = ValidOutputFolder;
+            string ask = outputFolder != null ? "" : "...";
 
             for (int i = 0; i < session.Parts.Count; i++)
             {
@@ -1016,27 +1061,45 @@ namespace MeshTexturePainter
                 int partIndex = i;
                 if (session.Parts.Count > 1)
                     EditorGUILayout.LabelField($"{part.Label}  ·  {part.Document.Width}x{part.Document.Height}", EditorStyles.miniBoldLabel);
+                string source = session.SourceTexturePath(partIndex);
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Export PNG..."))
+                    string folder = !string.IsNullOrEmpty(pm.exportPath) ? Path.GetDirectoryName(pm.exportPath)
+                        : source != null ? Path.GetDirectoryName(source) : session.MaterialFolder(partIndex) ?? "Assets";
+                    if (GUILayout.Button(new GUIContent("Export PNG" + ask, outputFolder != null ? $"Save into {outputFolder}" : null)))
                     {
-                        string folder = !string.IsNullOrEmpty(pm.exportPath) ? Path.GetDirectoryName(pm.exportPath)
-                            : !string.IsNullOrEmpty(pm.sourceTexturePath) ? Path.GetDirectoryName(pm.sourceTexturePath) : "Assets";
-                        string baseName = !string.IsNullOrEmpty(pm.sourceTexturePath) ? Path.GetFileNameWithoutExtension(pm.sourceTexturePath) + "_painted"
-                            : session.IsMask ? "PaintedMask" : "PaintedTexture";
-                        string path = EditorUtility.SaveFilePanelInProject("Export Painted Texture", baseName, "png", "Choose where to save " + part.Label, folder);
-                        if (!string.IsNullOrEmpty(path)) Export(session, partIndex, path);
+                        string baseName = source != null ? Path.GetFileNameWithoutExtension(source) + "_painted" : NewTextureName(session, part);
+                        string path = outputFolder != null
+                            ? UniqueTexturePath(outputFolder, baseName)
+                            : EditorUtility.SaveFilePanelInProject("Export Painted Texture", baseName, "png", "Choose where to save " + part.Label, folder);
+                        if (!string.IsNullOrEmpty(path)) Export(session, partIndex, path, assignOnExport);
                         GUIUtility.ExitGUI();
                     }
 
-                    bool canOverwrite = !string.IsNullOrEmpty(pm.sourceTexturePath) && pm.sourceTexturePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
-                    using (new EditorGUI.DisabledScope(!canOverwrite))
+                    if (source == null)
                     {
-                        if (GUILayout.Button(new GUIContent("Overwrite Source", canOverwrite ? pm.sourceTexturePath : "Only PNG source textures can be overwritten")))
+                        // an empty slot: create its texture file and assign it, then Overwrite Source updates that file
+                        string where = outputFolder != null ? $"into {outputFolder}" : "as a new PNG";
+                        if (GUILayout.Button(new GUIContent("Create Texture" + ask, $"The material has no {pm.textureProperty} texture yet. Save the painting {where} and assign it to the painted material slots. Afterwards Overwrite Source updates that file.")))
                         {
-                            if (EditorUtility.DisplayDialog("Overwrite Texture", $"Replace '{pm.sourceTexturePath}' with the flattened painting? The file is written as an 8 bit PNG. This cannot be undone.", "Overwrite", "Cancel"))
-                                Export(session, partIndex, pm.sourceTexturePath);
+                            string path = outputFolder != null
+                                ? UniqueTexturePath(outputFolder, NewTextureName(session, part))
+                                : EditorUtility.SaveFilePanelInProject("Create Texture", NewTextureName(session, part), "png", $"Choose where to save the new {pm.textureProperty} texture", folder);
+                            if (!string.IsNullOrEmpty(path)) Export(session, partIndex, path, true);
                             GUIUtility.ExitGUI();
+                        }
+                    }
+                    else
+                    {
+                        bool canOverwrite = source.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+                        using (new EditorGUI.DisabledScope(!canOverwrite))
+                        {
+                            if (GUILayout.Button(new GUIContent("Overwrite Source", canOverwrite ? source : "Only PNG source textures can be overwritten")))
+                            {
+                                if (EditorUtility.DisplayDialog("Overwrite Texture", $"Replace '{source}' with the flattened painting? The file is written as an 8 bit PNG. This cannot be undone.", "Overwrite", "Cancel"))
+                                    Export(session, partIndex, source, assignOnExport);
+                                GUIUtility.ExitGUI();
+                            }
                         }
                     }
                 }
@@ -1051,12 +1114,81 @@ namespace MeshTexturePainter
             }
         }
 
-        void Export(PaintSession session, int partIndex, string assetPath)
+        /// <summary>The folder exported and created textures land in, per project. Empty: ask with a save dialog.</summary>
+        static string OutputFolder
+        {
+            get => EditorPrefs.GetString(OutputFolderKey + "." + Application.dataPath, "");
+            set => EditorPrefs.SetString(OutputFolderKey + "." + Application.dataPath, value ?? "");
+        }
+
+        /// <summary>The output folder while it exists, otherwise null.</summary>
+        static string ValidOutputFolder
+        {
+            get
+            {
+                string folder = OutputFolder;
+                return !string.IsNullOrEmpty(folder) && AssetDatabase.IsValidFolder(folder) ? folder : null;
+            }
+        }
+
+        void DrawOutputFolder()
+        {
+            string folder = OutputFolder;
+            var asset = string.IsNullOrEmpty(folder) ? null : AssetDatabase.LoadAssetAtPath<DefaultAsset>(folder);
+            EditorGUI.BeginChangeCheck();
+            var picked = EditorGUILayout.ObjectField(new GUIContent("Output Folder",
+                "Drag a folder from the Project window (or any file inside it). Export PNG and Create Texture then save straight into it without asking, and never replace an existing file. Leave empty to choose a location every time."),
+                asset, typeof(UnityEngine.Object), false);
+            if (EditorGUI.EndChangeCheck())
+            {
+                outputFolderHint = null;
+                string path = FolderOf(picked);
+                if (picked == null) OutputFolder = "";
+                else if (path != null) OutputFolder = path;
+                else outputFolderHint = $"'{picked.name}' is not inside the project's Assets folder, so the output folder stays as it was.";
+            }
+            if (outputFolderHint != null)
+                EditorGUILayout.HelpBox(outputFolderHint, MessageType.Info);
+            else if (!string.IsNullOrEmpty(folder) && ValidOutputFolder == null)
+                EditorGUILayout.HelpBox($"The output folder '{folder}' no longer exists. Textures are saved with a dialog until you pick another one.", MessageType.Warning);
+        }
+
+        /// <summary>The Assets folder an object dropped on the output folder field stands for: the folder itself, or the folder a file is in.</summary>
+        internal static string FolderOf(UnityEngine.Object picked)
+        {
+            string path = picked != null ? AssetDatabase.GetAssetPath(picked) : null;
+            if (string.IsNullOrEmpty(path)) return null;
+            if (!AssetDatabase.IsValidFolder(path)) path = Path.GetDirectoryName(path)?.Replace('\\', '/');
+            bool inAssets = path == "Assets" || (path != null && path.StartsWith("Assets/", StringComparison.Ordinal));
+            return inAssets && AssetDatabase.IsValidFolder(path) ? path : null;
+        }
+
+        /// <summary>A free asset path for a new PNG in a folder: the name with unsafe characters replaced, numbered when the file exists.</summary>
+        internal static string UniqueTexturePath(string folder, string baseName)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            string name = new string(baseName.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim();
+            if (name.Length == 0) name = "Texture";
+            return AssetDatabase.GenerateUniqueAssetPath($"{folder.TrimEnd('/')}/{name}.png");
+        }
+
+        /// <summary>File name for a slot without a texture: material and property, e.g. "Body_EmissionMask".</summary>
+        static string NewTextureName(PaintSession session, PaintPart part)
+        {
+            var renderer = part.Target.Renderer;
+            var materials = renderer != null ? renderer.sharedMaterials : new Material[0];
+            var mat = part.Target.Slots.Where(s => s < materials.Length).Select(s => materials[s]).FirstOrDefault(m => m != null);
+            string property = part.Meta.textureProperty.TrimStart('_');
+            if (mat == null) return (session.IsMask ? "PaintedMask_" : "PaintedTexture_") + property;
+            return mat.name + "_" + property;
+        }
+
+        void Export(PaintSession session, int partIndex, string assetPath, bool assign)
         {
             try
             {
                 EditorUtility.DisplayProgressBar("VRC Texture Painter", "Exporting texture...", 0.5f);
-                var tex = session.ExportTexture(partIndex, assetPath, assignOnExport);
+                var tex = session.ExportTexture(partIndex, assetPath, assign);
                 if (tex != null) EditorGUIUtility.PingObject(tex);
                 lastError = null;
             }
@@ -1077,8 +1209,8 @@ namespace MeshTexturePainter
             string path = session.ProjectPath;
             if (saveAs || string.IsNullOrEmpty(path))
             {
-                string source = session.Parts[0].Meta.sourceTexturePath;
-                string folder = !string.IsNullOrEmpty(source) ? Path.GetDirectoryName(source) : "Assets";
+                string source = session.SourceTexturePath(0);
+                string folder = source != null ? Path.GetDirectoryName(source) : session.MaterialFolder(0) ?? "Assets";
                 string name = session.Target.Renderer != null ? session.Target.Renderer.name : "Painting";
                 if (tab.IsMask) name += " Mask";
                 path = EditorUtility.SaveFilePanel("Save Paint Project", folder, name, PaintProjectIO.Extension);
@@ -1113,15 +1245,17 @@ namespace MeshTexturePainter
                 ? "Left drag: paint    Alt + drag: orbit (as usual)\n" +
                   "[ / ]: radius    Shift + [ / ]: strength\n" +
                   "Ctrl + scroll: radius    Ctrl + Shift + scroll: strength\n" +
-                  "3 Hard   4 Soft   5 Blur   7 Eraser   (or numpad 1, 2, 3, 5)\n" +
+                  "3 Hard   4 Soft   5 Blur   7 Eraser   8 Gradient   (or numpad 1, 2, 3, 5, 6)\n" +
                   "R, G and B add up where they overlap; the Eraser clears the selected channel\n" +
+                  "Gradient: drag from start to end, Shift snaps the angle\n" +
                   "Esc: cancel stroke    Numpad keys need Num Lock on\n" +
                   "Right mouse + WASD / QE: fly as usual (painting keys pause meanwhile)\n" +
                   "Ctrl + Z / Ctrl + Y: undo / redo (Unity undo)"
                 : "Left drag: paint    Alt + drag: orbit (as usual)\n" +
                   "[ / ]: radius    Shift + [ / ]: strength\n" +
                   "Ctrl + scroll: radius    Ctrl + Shift + scroll: strength\n" +
-                  "3 Hard   4 Soft   5 Blur   6 Blend   7 Eraser   (or numpad 1 – 5)\n" +
+                  "3 Hard   4 Soft   5 Blur   6 Blend   7 Eraser   8 Gradient   (or numpad 1 – 6)\n" +
+                  "Gradient: drag from start to end, Shift snaps the angle\n" +
                   "C or numpad 0: pick colour under cursor    Esc: cancel stroke\n" +
                   "Numpad keys need Num Lock on\n" +
                   "Right mouse + WASD / QE: fly as usual (painting keys pause meanwhile)\n" +

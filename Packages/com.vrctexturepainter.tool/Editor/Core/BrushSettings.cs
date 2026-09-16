@@ -11,7 +11,9 @@ namespace MeshTexturePainter
         SoftBrush = 1,
         Blur = 2,
         ColorBlend = 3,
-        Eraser = 4
+        Eraser = 4,
+        /// <summary>A straight band between two points, coloured with a gradient along it.</summary>
+        Gradient = 5
     }
 
     public enum FalloffShape
@@ -90,6 +92,17 @@ namespace MeshTexturePainter
         /// <summary>The value a brush moves the channels towards.</summary>
         public static float Value(MaskChannel c) => c == MaskChannel.Black ? 0f : 1f;
 
+        /// <summary>Gradient of the mask painter: 1 for every colour channel of the mixed start colour (bits: 1 red, 2 green, 4 blue).</summary>
+        public static Vector4 GradientWeights(int channels) =>
+            new Vector4((channels & 1) != 0 ? 1f : 0f, (channels & 2) != 0 ? 1f : 0f, (channels & 4) != 0 ? 1f : 0f, 0f);
+
+        /// <summary>The mixed start colour of a mask gradient.</summary>
+        public static Color GradientDisplay(int channels)
+        {
+            var w = GradientWeights(channels);
+            return new Color(w.x, w.y, w.z);
+        }
+
         /// <summary>Colour of the channel in the window and the brush cursor.</summary>
         public static Color Display(MaskChannel c)
         {
@@ -135,12 +148,16 @@ namespace MeshTexturePainter
         public Color secondaryColor = Color.black;
         /// <summary>Mask painting: the channels the brushes paint.</summary>
         public MaskChannel maskChannel = MaskChannel.Red;
+        /// <summary>Mask gradient: the channels mixed into the start colour, which runs to black (bits: 1 red, 2 green, 4 blue).</summary>
+        public int gradientChannels = 1;
 
         public ToolSettings hard = new ToolSettings(20f, 1f, 1f, 0.08f);
         public ToolSettings soft = new ToolSettings(40f, 1f, 0f, 0.08f);
         public ToolSettings blur = new ToolSettings(40f, 0.5f, 0f, 0.15f);
         public ToolSettings blend = new ToolSettings(40f, 0.5f, 0.2f, 0.1f);
         public ToolSettings eraser = new ToolSettings(40f, 1f, 0.5f, 0.08f);
+        /// <summary>Gradient: radius is half the width of the band, hardness its edge softness.</summary>
+        public ToolSettings gradient = new ToolSettings(20f, 1f, 1f, 0.1f);
 
         /// <summary>Blur kernel size as a fraction of the brush radius.</summary>
         [Range(0.02f, 1f)] public float blurSize = 0.25f;
@@ -150,7 +167,7 @@ namespace MeshTexturePainter
         public ColorBlendMode blendMode = ColorBlendMode.Transition;
         /// <summary>Width of the colour transition as a fraction of the brush radius.</summary>
         [Range(0.05f, 1f)] public float blendWidth = 0.6f;
-        /// <summary>Colour space blur and color blend mix colours in.</summary>
+        /// <summary>Colour space blur, color blend and gradients mix colours in.</summary>
         public ColorMixSpace mixSpace = ColorMixSpace.Perceptual;
 
         public FalloffShape falloffShape = FalloffShape.Projected;
@@ -175,13 +192,15 @@ namespace MeshTexturePainter
                 case PaintTool.SoftBrush: return soft;
                 case PaintTool.Blur: return blur;
                 case PaintTool.ColorBlend: return blend;
+                case PaintTool.Gradient: return gradient;
                 default: return eraser;
             }
         }
 
-        public static bool UsesColor(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush;
+        public static bool UsesColor(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Gradient;
         public static bool UsesHardness(PaintTool t) => t != PaintTool.HardBrush;
-        public static bool IsStrokeBuffered(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Eraser;
+        /// <summary>Tools painted into the stroke mask and baked into the layer when the stroke ends. The gradient redraws its whole line instead of adding dabs.</summary>
+        public static bool IsStrokeBuffered(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Eraser || t == PaintTool.Gradient;
         /// <summary>The mask painter has no colour blend brush; blur covers smoothing masks.</summary>
         public static bool UsableForMasks(PaintTool t) => t != PaintTool.ColorBlend;
 

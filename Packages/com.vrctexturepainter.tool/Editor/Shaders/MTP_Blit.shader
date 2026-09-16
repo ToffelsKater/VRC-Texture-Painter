@@ -11,6 +11,7 @@ Shader "Hidden/MeshTexturePainter/Blit"
     #pragma target 4.5
     #include "UnityCG.cginc"
     #include "MTPWrap.cginc"
+    #include "MTPColor.cginc"
 
     Texture2D<float4> _MainTex;
     SamplerState sampler_MainTex;
@@ -21,9 +22,11 @@ Shader "Hidden/MeshTexturePainter/Blit"
     float4 _TexSize;        // w, h, 1/w, 1/h of the destination
     float _Opacity;
     float _BlendMode;
-    float _StrokeMode;      // 0 none, 1 paint, 2 erase
+    float _StrokeMode;      // 0 none, 1 paint, 2 erase, 3 channels (masks)
     float _StrokeOpacity;
     float4 _BrushColor;     // raw (gamma encoded) colour
+    float _StrokeGradient;  // 1: the stroke colour runs from _BrushColor to _BrushColor2 along the gradient line (stroke mask green), mixed in _MixSpace
+    float4 _BrushColor2;    // raw (gamma encoded) end colour of a gradient
     float _LockAlpha;
     float _ToLinear;
     float _ToGamma;
@@ -67,18 +70,27 @@ Shader "Hidden/MeshTexturePainter/Blit"
         return s;
     }
 
+    float4 GradientColor(float t)
+    {
+        float3 rgb = FromMixSpace(lerp(ToMixSpace(_BrushColor.rgb), ToMixSpace(_BrushColor2.rgb), t));
+        return float4(saturate(rgb), lerp(_BrushColor.a, _BrushColor2.a, t));
+    }
+
     float4 ApplyStroke(float4 L, int2 t)
     {
         if (_StrokeMode < 0.5) return L;
-        float m = saturate(_StrokeMask.Load(int3(t, 0)).r) * _StrokeOpacity;
+        float4 stroke = _StrokeMask.Load(int3(t, 0));
+        float m = saturate(stroke.r) * _StrokeOpacity;
+        float4 color = _BrushColor;
+        if (_StrokeGradient > 0.5 && m > 0.0) color = GradientColor(saturate(stroke.g));
         // masks: only the stroke's channels move, so masks in other channels stay
-        if (_StrokeMode > 2.5) return lerp(L, _BrushColor, _StrokeChannels * m);
+        if (_StrokeMode > 2.5) return lerp(L, color, _StrokeChannels * m);
         if (_StrokeMode < 1.5)
         {
-            m *= _BrushColor.a;
-            if (_LockAlpha > 0.5) return float4(lerp(L.rgb, _BrushColor.rgb, m), L.a);
+            m *= color.a;
+            if (_LockAlpha > 0.5) return float4(lerp(L.rgb, color.rgb, m), L.a);
             float ao = m + L.a * (1.0 - m);
-            float3 rgb = ao > 1e-6 ? (_BrushColor.rgb * m + L.rgb * L.a * (1.0 - m)) / ao : _BrushColor.rgb;
+            float3 rgb = ao > 1e-6 ? (color.rgb * m + L.rgb * L.a * (1.0 - m)) / ao : color.rgb;
             return float4(rgb, ao);
         }
         if (_LockAlpha > 0.5) return L;

@@ -3,6 +3,7 @@
 
 #include "UnityCG.cginc"
 #include "MTPWrap.cginc"
+#include "MTPColor.cginc"
 
 // ---------------------------------------------------------------------------
 // Brush uniforms (shared by the texture space and capture shaders)
@@ -17,14 +18,15 @@ float4x4 _WorldToView;
 float4x4 _Mirror;
 
 float4 _ScreenSize;     // pixel width, pixel height, 1/width, 1/height
-float4 _BrushCenter;    // xy screen pixel centre, z radius in pixels
+float4 _BrushCenter;    // xy screen pixel centre (line: start), z radius in pixels (line: half width)
+float4 _LineEnd;        // line shape: xy screen pixel end of the line
 float4 _BrushWorld;     // xyz surface hit, w radius in world units (sphere shape)
 float4 _CamPos;         // xyz camera position, w = 1 for orthographic
 float4 _CamForward;     // xyz camera forward
 float _ProjScale;       // projection[1,1] * pixelHeight / 2
 float _PixelWorld;      // world size of one pixel at view depth 1 (orthographic: absolute)
 
-float _BrushShape;      // 0 projected, 1 sphere
+float _BrushShape;      // 0 projected, 1 sphere, 2 line on screen (gradient)
 float _HardEdge;        // 1 hard brush (antialiased disc), 0 smooth falloff
 float _Hardness;
 float _Occlusion;
@@ -51,20 +53,31 @@ float2 WorldToScreenPixel(float3 wpos, out float w)
     return (ndc * 0.5 + 0.5) * _ScreenSize.xy;
 }
 
+// The sphere shape only: the line shape (2) is measured on screen like the projected one.
+bool IsSphereShape() { return _BrushShape > 0.5 && _BrushShape < 1.5; }
+
+float SegmentDistance(float2 p, float2 a, float2 b)
+{
+    float2 ab = b - a;
+    float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-6));
+    return length(p - (a + ab * t));
+}
+
 // Conservative per triangle test: could any part of the triangle (bounding
 // sphere tri.xyz / tri.w) be touched by the brush?
 bool TriangleNearBrush(float4 tri)
 {
     float3 c = MirrorPoint(tri.xyz);
     float r = tri.w;
-    if (_BrushShape > 0.5)
+    if (IsSphereShape())
         return distance(c, _BrushWorld.xyz) <= _BrushWorld.w + r;
 
     float w;
     float2 px = WorldToScreenPixel(c, w);
     if (w < r + 1e-4) return true; // crosses the camera plane, keep it
     float rpx = r * _ProjScale / w;
-    return length(px - _BrushCenter.xy) <= _BrushCenter.z + rpx + 2.0;
+    float dist = _BrushShape > 1.5 ? SegmentDistance(px, _BrushCenter.xy, _LineEnd.xy) : length(px - _BrushCenter.xy);
+    return dist <= _BrushCenter.z + rpx + 2.0;
 }
 
 // Radial profile of the brush for a normalized distance d (0 centre, 1 edge).
@@ -83,25 +96,52 @@ float BrushProfile(float d, float radiusPx)
 float BrushDistance(float3 wpos, out float2 px, out float w)
 {
     px = WorldToScreenPixel(wpos, w);
-    if (_BrushShape > 0.5)
+    if (IsSphereShape())
         return distance(wpos, _BrushWorld.xyz) / max(_BrushWorld.w, 1e-6);
     if (w <= 0) return 2.0;
     return length(px - _BrushCenter.xy) / max(_BrushCenter.z, 1e-4);
 }
 
-// Full brush weight for a surface point: shape, facing and visibility.
-// wpos / wnormal must already be mirrored.
-float BrushWeight(float3 wpos, float3 wnormal)
+// Line shape: a band of width 2 * radius from _BrushCenter.xy to _LineEnd.xy with
+// flat, antialiased ends. The profile runs across the band; t is the position
+// along it (0 at the start, 1 at the end).
+float LineProfile(float2 px, out float t)
 {
+    float2 d = _LineEnd.xy - _BrushCenter.xy;
+    float len = length(d);
+    float2 dir = len > 1e-4 ? d / len : float2(1, 0);
+    float2 rel = px - _BrushCenter.xy;
+    float along = dot(rel, dir);
+    float across = abs(dot(rel, float2(-dir.y, dir.x)));
+    t = len > 1e-4 ? saturate(along / len) : 0.0;
+    float ends = saturate(along + 0.5) * saturate(len - along + 0.5);
+    return BrushProfile(across / max(_BrushCenter.z, 1e-4), _BrushCenter.z) * ends;
+}
+
+// Full brush weight for a surface point: shape, facing and visibility. t is the
+// position along the line of the line shape. wpos / wnormal must already be mirrored.
+float BrushWeightT(float3 wpos, float3 wnormal, out float t)
+{
+    t = 0.0;
     float2 px; float w;
-    float d = BrushDistance(wpos, px, w);
-    if (d >= 1.0 || w <= 0) return 0.0;
+    float a;
+    if (_BrushShape > 1.5)
+    {
+        px = WorldToScreenPixel(wpos, w);
+        if (w <= 0) return 0.0;
+        a = LineProfile(px, t);
+    }
+    else
+    {
+        float d = BrushDistance(wpos, px, w);
+        if (d >= 1.0 || w <= 0) return 0.0;
+        a = BrushProfile(d, _BrushCenter.z);
+    }
+    if (a <= 0.0) return 0.0;
 
     float3 viewDir = _CamPos.w > 0.5 ? -_CamForward.xyz : normalize(_CamPos.xyz - wpos);
     float ndv = dot(normalize(wnormal), viewDir);
     if (_BackfaceCull > 0.5 && ndv <= 0.0) return 0.0;
-
-    float a = BrushProfile(d, _BrushCenter.z);
 
     if (_NormalFade > 0.0)
         a *= smoothstep(_NormalFade, min(_NormalFade + 0.15, 1.0), abs(ndv));
@@ -119,6 +159,12 @@ float BrushWeight(float3 wpos, float3 wnormal)
         if (viewDepth > sceneDepth + bias) return 0.0;
     }
     return a;
+}
+
+float BrushWeight(float3 wpos, float3 wnormal)
+{
+    float t;
+    return BrushWeightT(wpos, wnormal, t);
 }
 
 // ---------------------------------------------------------------------------
@@ -166,66 +212,6 @@ v2f_uvspace vert_uvspace(appdata_paint v)
 // ---------------------------------------------------------------------------
 
 Texture2D<float4> _PadMap;
-
-// ---------------------------------------------------------------------------
-// Colour mixing space for blur and color blend. Colours are converted before
-// they are averaged and converted back when written.
-// ---------------------------------------------------------------------------
-
-float _MixSpace; // 0 perceptual (OKLab), 1 linear light, 2 stored sRGB values
-
-float3 SrgbToLinear3(float3 c)
-{
-    return float3(GammaToLinearSpaceExact(c.r), GammaToLinearSpaceExact(c.g), GammaToLinearSpaceExact(c.b));
-}
-
-float3 LinearToSrgb3(float3 c)
-{
-    c = max(c, 0.0);
-    return float3(LinearToGammaSpaceExact(c.r), LinearToGammaSpaceExact(c.g), LinearToGammaSpaceExact(c.b));
-}
-
-// OKLab, Björn Ottosson 2020
-float3 LinearToOklab(float3 c)
-{
-    float l = 0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b;
-    float m = 0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b;
-    float s = 0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b;
-    l = pow(max(l, 0.0), 1.0 / 3.0);
-    m = pow(max(m, 0.0), 1.0 / 3.0);
-    s = pow(max(s, 0.0), 1.0 / 3.0);
-    return float3(
-        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
-        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
-        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s);
-}
-
-float3 OklabToLinear(float3 c)
-{
-    float l = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
-    float m = c.x - 0.1055613458 * c.y - 0.0638541728 * c.z;
-    float s = c.x - 0.0894841775 * c.y - 1.2914855480 * c.z;
-    l = l * l * l;
-    m = m * m * m;
-    s = s * s * s;
-    return float3(
-        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-}
-
-float3 ToMixSpace(float3 srgb)
-{
-    if (_MixSpace > 1.5) return srgb;
-    float3 lin = SrgbToLinear3(saturate(srgb));
-    return _MixSpace > 0.5 ? lin : LinearToOklab(lin);
-}
-
-float3 FromMixSpace(float3 v)
-{
-    if (_MixSpace > 1.5) return v;
-    return LinearToSrgb3(_MixSpace > 0.5 ? v : OklabToLinear(v));
-}
 
 int2 PadTexel(int2 t)
 {

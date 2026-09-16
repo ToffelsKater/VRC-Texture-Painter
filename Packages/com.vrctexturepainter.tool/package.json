@@ -3,7 +3,7 @@
   "displayName": "VRC Texture Painter",
   "version": "1.1.0",
   "unity": "2022.3",
-  "description": "Paint textures and shader masks directly on your avatar in the Scene view, like Blender's Texture Paint mode: hard, soft, blur, color blend and eraser brushes, Photoshop style layers, a mask painter whose red, green and blue masks add up in one texture, and 3D projection painting that stays correct across UV seams, mirrored UVs and multiple UV channels. Editor-only.",
+  "description": "Paint textures and shader masks directly on your avatar in the Scene view, like Blender's Texture Paint mode: hard, soft, blur, color blend, eraser and gradient tools, Photoshop style layers, a mask painter for Poiyomi and lilToon masks, and 3D projection painting that stays correct across UV seams, mirrored UVs and multiple UV channels. Editor-only.",
   "author": {
     "name": "ToffelsKater",
     "url": "https://github.com/ToffelsKater"
@@ -20,6 +20,8 @@
     "paint",
     "layers",
     "poiyomi",
+    "liltoon",
+    "mask",
     "editor"
   ]
 }

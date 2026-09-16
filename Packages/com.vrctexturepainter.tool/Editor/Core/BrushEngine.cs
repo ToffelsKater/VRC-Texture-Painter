@@ -9,6 +9,8 @@ namespace MeshTexturePainter
     {
         /// <summary>Screen pixel position, origin bottom left (HandleUtility.GUIPointToScreenPixelCoordinate).</summary>
         public Vector2 screenPixel;
+        /// <summary>Gradient: screen pixel at the end of the line (screenPixel is its start).</summary>
+        public Vector2 lineEnd;
         public float radius;
         public float strength;
         public bool hasHit;
@@ -112,6 +114,7 @@ namespace MeshTexturePainter
             m.SetMatrix(Ids.Mirror, mirror);
             m.SetVector(Ids.ScreenSize, new Vector4(w, h, 1f / w, 1f / h));
             m.SetVector(Ids.BrushCenter, new Vector4(d.screenPixel.x, d.screenPixel.y, Math.Max(0.5f, d.radius), 0f));
+            m.SetVector(Ids.LineEnd, new Vector4(d.lineEnd.x, d.lineEnd.y, 0f, 0f));
 
             float worldRadius = 0f;
             if (d.hasHit)
@@ -129,7 +132,7 @@ namespace MeshTexturePainter
             m.SetFloat(Ids.PixelWorld, pixelWorld);
 
             bool sphere = s.falloffShape == FalloffShape.Sphere && d.hasHit;
-            m.SetFloat(Ids.BrushShape, sphere ? 1f : 0f);
+            m.SetFloat(Ids.BrushShape, tool == PaintTool.Gradient ? 2f : sphere ? 1f : 0f);
             m.SetFloat(Ids.HardEdge, tool == PaintTool.HardBrush ? 1f : 0f);
             m.SetFloat(Ids.Hardness, s.For(tool).hardness);
             m.SetFloat(Ids.Occlusion, s.occlusion && depthMap != null ? 1f : 0f);
@@ -152,6 +155,29 @@ namespace MeshTexturePainter
                 var cmd = PaintResources.Cmd;
                 cmd.SetRenderTarget(doc.StrokeMask);
                 cmd.DrawMesh(target.PaintMesh, Matrix4x4.identity, mat, 0, PaintResources.UVMask);
+                PaintResources.Execute(cmd);
+            }
+            doc.NotifyStrokeChanged();
+        }
+
+        /// <summary>
+        /// Gradient: draws the whole line from screenPixel to lineEnd into the document's
+        /// stroke mask again, replacing the previous line. Coverage goes to red and the
+        /// position along the line to green; the stroke colour is picked from it on commit.
+        /// </summary>
+        public void GradientDab(PaintDocument doc, PaintTarget target, Camera cam, BrushSettings s, DabInput d)
+        {
+            if (doc.StrokeMask == null) return;
+            doc.ClearStrokeMask();
+            if ((d.lineEnd - d.screenPixel).sqrMagnitude < 1f) return;
+            var mat = PaintResources.UVSpace;
+            foreach (var mirror in Mirrors(s, target))
+            {
+                SetBrushUniforms(mat, cam, s, d, mirror, PaintTool.Gradient);
+                mat.SetFloat(Ids.DabStrength, d.strength);
+                var cmd = PaintResources.Cmd;
+                cmd.SetRenderTarget(doc.StrokeMask);
+                cmd.DrawMesh(target.PaintMesh, Matrix4x4.identity, mat, 0, PaintResources.UVGradient);
                 PaintResources.Execute(cmd);
             }
             doc.NotifyStrokeChanged();
