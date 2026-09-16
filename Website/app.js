@@ -59,6 +59,25 @@
     });
   });
 
+  // Media: open the full size GIF or screenshot in a dialog instead of leaving the page
+  const lightbox = document.getElementById('lightbox');
+  if (lightbox && typeof lightbox.showModal === 'function') {
+    const lightboxImage = lightbox.querySelector('img');
+    document.querySelectorAll('a.zoom').forEach(link => {
+      link.addEventListener('click', event => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        const thumb = link.querySelector('img');
+        lightboxImage.src = link.href;
+        lightboxImage.alt = thumb ? thumb.alt : '';
+        lightbox.showModal();
+      });
+    });
+    lightbox.querySelector('.lightbox-close').addEventListener('click', () => lightbox.close());
+    lightbox.addEventListener('click', event => { if (event.target === lightbox) lightbox.close(); });
+    lightbox.addEventListener('close', () => { lightboxImage.removeAttribute('src'); });
+  }
+
   // Versions from the live listing
   const parseVersion = version => {
     const [core, pre = ''] = String(version).split('-');
