@@ -44,9 +44,6 @@
         <a href="#fix">Fix textures</a>
         <a href="#masks">Masks</a>
         <a href="#install">Install</a>
-        <a class="icon-link" href="https://github.com/ToffelsKater/VRC-Texture-Painter" target="_blank" rel="noopener" aria-label="GitHub repository">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
-        </a>
       </nav>
     </div>
   </header>
@@ -301,12 +298,11 @@
           {{~ end ~}}
         </div>
         <dl class="package-meta">
-          <div><dt>Author</dt><dd>{{ if package.Author.Url }}<a href="{{ package.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ package.Author.Name | html.escape }}</a>{{ else }}{{ package.Author.Name | html.escape }}{{ end }}</dd></div>
-          <div><dt>License</dt><dd>{{ if package.LicenseUrl }}<a href="{{ package.LicenseUrl | html.escape }}" target="_blank" rel="noopener">{{ package.License | html.escape }}</a>{{ else }}{{ package.License | html.escape }}{{ end }}</dd></div>
+          <div><dt>Author</dt><dd>{{ package.Author.Name | html.escape }}</dd></div>
+          <div><dt>License</dt><dd>{{ package.License | html.escape }}</dd></div>
           <div><dt>Dependencies</dt><dd>{{ if (package.Dependencies | array.size) > 0 }}{{ for dependency in package.Dependencies }}{{ dependency.Name | html.escape }} {{ dependency.Version | html.escape }}{{ if !for.last }}, {{ end }}{{ end }}{{ else }}None{{ end }}</dd></div>
           <div class="package-actions">
             <a class="btn btn-ghost btn-small" data-latest-zip href="{{ package.ZipUrl | html.escape }}">Download .zip</a>
-            <a class="btn btn-ghost btn-small" href="https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/README.md" target="_blank" rel="noopener">Documentation</a>
           </div>
         </dl>
       </article>
@@ -322,10 +318,9 @@
           <p>Fix textures and paint shader masks directly on your avatar in the Unity Scene view.</p>
         </div>
         <dl class="package-meta">
-          <div><dt>Author</dt><dd><a href="{{ listingInfo.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ listingInfo.Author.Name | html.escape }}</a></dd></div>
+          <div><dt>Author</dt><dd>{{ listingInfo.Author.Name | html.escape }}</dd></div>
           <div class="package-actions">
             <a class="btn btn-ghost btn-small" data-latest-zip href="https://github.com/ToffelsKater/VRC-Texture-Painter/releases/latest">Download .zip</a>
-            <a class="btn btn-ghost btn-small" href="https://github.com/ToffelsKater/VRC-Texture-Painter/blob/main/Packages/com.vrctexturepainter.tool/README.md" target="_blank" rel="noopener">Documentation</a>
           </div>
         </dl>
       </article>
@@ -340,7 +335,7 @@
 
   <footer class="footer">
     <div class="wrap footer-inner">
-      <p>Published by <a href="{{ listingInfo.Author.Url | html.escape }}" target="_blank" rel="noopener">{{ listingInfo.Author.Name | html.escape }}</a> · <a href="https://github.com/ToffelsKater/VRC-Texture-Painter" target="_blank" rel="noopener">Source on GitHub</a></p>
+      <p>Published by {{ listingInfo.Author.Name | html.escape }}</p>
       <p class="muted">A community tool, not affiliated with or endorsed by VRChat Inc., Poiyomi or lilxyzw.</p>
     </div>
   </footer>

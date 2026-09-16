@@ -101,7 +101,6 @@ img, svg { display: block; max-width: 100%; }
 .topnav { display: flex; align-items: center; gap: 22px; font-size: 15px; }
 .topnav a { text-decoration: none; color: var(--muted); }
 .topnav a:hover { color: var(--text); }
-.icon-link svg { width: 22px; height: 22px; }
 
 /* ---------------------------------------------------------------- hero */
 
@@ -491,7 +490,7 @@ details li + li { margin-top: 4px; }
 }
 
 @media (max-width: 620px) {
-  .topnav a:not(.icon-link) { display: none; }
+  .topnav { display: none; }
   .lead { font-size: 17px; }
   .copy-field { flex-direction: column; }
 }
