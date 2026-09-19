@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1] - 2026-09-19
+
+### Changed
+
+- lilToon's `_Main2ndTex` and `_Main3rdTex` (Main 2nd / 3rd layers) are now listed in the Texture Painter instead of the Mask Painter.
+- The UV channel of a texture is read from lilToon's per-layer UV Mode (`<property>_UVMode`) as well as Poiyomi's. lilToon's MatCap mode shows the non-UV mapping warning.
+
 ## [1.1.0] - 2026-09-17
 
 ### Added

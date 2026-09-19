@@ -307,25 +307,35 @@ namespace MeshTexturePainter
         internal static List<string> ColorTextureProperties(Material mat) =>
             TextureProperties(mat).Where(p => IsColorProperty(mat.shader, p)).ToList();
 
-        /// <summary>The main texture (_MainTex or the shader's [MainTexture]) or a Poiyomi decal texture.</summary>
+        /// <summary>The main texture (_MainTex or the shader's [MainTexture]), a lilToon 2nd/3rd main texture or a Poiyomi decal texture.</summary>
         static bool IsColorProperty(Shader shader, string property)
         {
-            if (property == "_MainTex" || property.StartsWith("_DecalTexture", StringComparison.Ordinal)) return true;
+            if (property == "_MainTex" || property == "_Main2ndTex" || property == "_Main3rdTex"
+                || property.StartsWith("_DecalTexture", StringComparison.Ordinal)) return true;
             int index = shader.FindPropertyIndex(property);
             return index >= 0 && (shader.GetPropertyFlags(index) & ShaderPropertyFlags.MainTexture) != 0;
         }
 
-        /// <summary>Poiyomi stores the UV channel of each texture in a "&lt;property&gt;UV" float (0-3 = UV0-UV3).</summary>
+        /// <summary>
+        /// The shader's UV mode for a texture, or -1 if it has none. Poiyomi stores it in "&lt;property&gt;UV",
+        /// lilToon in "&lt;property&gt;_UVMode". 0-3 = UV0-UV3, higher values are other mappings.
+        /// </summary>
+        static int ShaderUVMode(Material mat, string property)
+        {
+            if (mat == null) return -1;
+            foreach (var name in new[] { property + "UV", property + "_UVMode" })
+                if (mat.HasProperty(name)) return Mathf.RoundToInt(mat.GetFloat(name));
+            return -1;
+        }
+
         static int ShaderUVChannel(Material mat, string property)
         {
-            if (mat == null || !mat.HasProperty(property + "UV")) return 0;
-            int uv = Mathf.RoundToInt(mat.GetFloat(property + "UV"));
+            int uv = ShaderUVMode(mat, property);
             return uv >= 0 && uv <= 3 ? uv : 0;
         }
 
-        /// <summary>Poiyomi modes above UV3 (panosphere, world or local position, polar...) are not UV maps.</summary>
-        static bool UsesNonUVMapping(Material mat, string property) =>
-            mat != null && mat.HasProperty(property + "UV") && Mathf.RoundToInt(mat.GetFloat(property + "UV")) > 3;
+        /// <summary>Modes above UV3 (Poiyomi panosphere, world position, polar...; lilToon MatCap) are not UV maps.</summary>
+        static bool UsesNonUVMapping(Material mat, string property) => ShaderUVMode(mat, property) > 3;
 
         /// <summary>Enabled Poiyomi decals with a texture: typical second textures on another UV channel.</summary>
         static IEnumerable<(string property, int uv, string label)> DecalSuggestions(Material mat)

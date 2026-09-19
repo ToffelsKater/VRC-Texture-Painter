@@ -97,7 +97,8 @@ above. **Mask Painter** paints the mask textures of a shader.
 1. Pick the renderer and material slots as usual.
 2. Under **Mask Texture**, pick one of the shader's texture slots and its UV channel.
    The Texture Painter only lists the main texture (`_MainTex`, or the slot the
-   shader marks as `[MainTexture]`) and Poiyomi decal textures. Every other slot,
+   shader marks as `[MainTexture]`), lilToon's `_Main2ndTex` and `_Main3rdTex`, and
+   Poiyomi decal textures. Every other slot,
    such as Poiyomi's `_EmissionMask`, Standard's `_DetailMask` or a normal map, is
    listed here. A slot without a texture starts black.
 3. Click **Start Painting Mask** and choose what to paint: **R**, **G**, **B**,
