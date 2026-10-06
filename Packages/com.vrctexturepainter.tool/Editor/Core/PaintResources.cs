@@ -191,6 +191,9 @@ namespace MeshTexturePainter
         public static readonly int CaptureWeight = Shader.PropertyToID("_CaptureWeight");
         public static readonly int CaptureVP = Shader.PropertyToID("_CaptureVP");
         public static readonly int WeightByBrush = Shader.PropertyToID("_WeightByBrush");
+        public static readonly int TipTex = Shader.PropertyToID("_TipTex");
+        public static readonly int TipRot = Shader.PropertyToID("_TipRot");
+        public static readonly int TipAspect = Shader.PropertyToID("_TipAspect");
     }
 
     internal static class RTUtil

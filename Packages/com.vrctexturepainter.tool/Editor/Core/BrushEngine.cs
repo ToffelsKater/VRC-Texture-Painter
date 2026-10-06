@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 namespace MeshTexturePainter
@@ -13,6 +14,8 @@ namespace MeshTexturePainter
         public Vector2 lineEnd;
         public float radius;
         public float strength;
+        /// <summary>Custom brush and stamp: degrees the texture is turned counterclockwise on screen.</summary>
+        public float angle;
         public bool hasHit;
         public Vector3 hitPoint;
         public Vector3 hitNormal;
@@ -131,8 +134,20 @@ namespace MeshTexturePainter
             m.SetFloat(Ids.ProjScale, Mathf.Abs(proj.m11) * h * 0.5f);
             m.SetFloat(Ids.PixelWorld, pixelWorld);
 
+            var tip = BrushSettings.UsesTip(tool) ? s.For(tool).TipTexture : null;
             bool sphere = s.falloffShape == FalloffShape.Sphere && d.hasHit;
-            m.SetFloat(Ids.BrushShape, tool == PaintTool.Gradient ? 2f : sphere ? 1f : 0f);
+            m.SetFloat(Ids.BrushShape, tool == PaintTool.Gradient ? 2f : tip != null ? 3f : sphere ? 1f : 0f);
+            if (tip != null)
+            {
+                float rad = d.angle * Mathf.Deg2Rad;
+                float longer = Math.Max(tip.width, tip.height);
+                // the mip whose texels match the screen pixels the texture covers
+                float lod = Mathf.Max(0f, Mathf.Log(longer / Math.Max(1f, 2f * d.radius), 2f));
+                bool srgb = RTUtil.LinearProject && GraphicsFormatUtility.IsSRGBFormat(tip.graphicsFormat);
+                m.SetTexture(Ids.TipTex, tip);
+                m.SetVector(Ids.TipRot, new Vector4(Mathf.Cos(rad), Mathf.Sin(rad), s.For(tool).invert ? 1f : 0f, lod));
+                m.SetVector(Ids.TipAspect, new Vector4(tip.width / longer, tip.height / longer, srgb ? 1f : 0f, 0f));
+            }
             m.SetFloat(Ids.HardEdge, tool == PaintTool.HardBrush ? 1f : 0f);
             m.SetFloat(Ids.Hardness, s.For(tool).hardness);
             m.SetFloat(Ids.Occlusion, s.occlusion && depthMap != null ? 1f : 0f);
@@ -143,10 +158,10 @@ namespace MeshTexturePainter
             m.SetTexture(Ids.DepthMap, depthMap != null ? (Texture)depthMap : Texture2D.whiteTexture);
         }
 
-        /// <summary>Hard, soft and eraser dabs: accumulate the brush into the document's stroke mask.</summary>
+        /// <summary>Hard, soft, eraser, custom brush and stamp dabs: accumulate the brush into the document's stroke mask.</summary>
         public void StrokeDab(PaintDocument doc, PaintTarget target, Camera cam, BrushSettings s, PaintTool tool, DabInput d)
         {
-            if (doc.StrokeMask == null || (s.falloffShape == FalloffShape.Sphere && !d.hasHit)) return;
+            if (doc.StrokeMask == null || (s.falloffShape == FalloffShape.Sphere && !BrushSettings.UsesTip(tool) && !d.hasHit)) return;
             var mat = PaintResources.UVSpace;
             foreach (var mirror in Mirrors(s, target))
             {

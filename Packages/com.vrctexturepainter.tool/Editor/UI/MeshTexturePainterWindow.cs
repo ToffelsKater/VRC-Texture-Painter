@@ -18,9 +18,9 @@ namespace MeshTexturePainter
         const string OutputFolderKey = "MeshTexturePainter.OutputFolder";
         static readonly int[] Resolutions = { 0, 512, 1024, 2048, 4096, 8192 };
         static readonly string[] ResolutionNames = { "Source size of each texture", "512", "1024", "2048", "4096", "8192" };
-        static readonly string[] ToolNames = { "Hard", "Soft", "Blur", "Blend", "Eraser", "Gradient" };
-        static readonly PaintTool[] MaskTools = { PaintTool.HardBrush, PaintTool.SoftBrush, PaintTool.Blur, PaintTool.Eraser, PaintTool.Gradient };
-        static readonly string[] MaskToolNames = { "Hard", "Soft", "Blur", "Eraser", "Gradient" };
+        static readonly string[] ToolNames = { "Hard", "Soft", "Blur", "Blend", "Eraser", "Gradient", "Custom", "Stamp" };
+        static readonly PaintTool[] MaskTools = { PaintTool.HardBrush, PaintTool.SoftBrush, PaintTool.Blur, PaintTool.Eraser, PaintTool.Gradient, PaintTool.Stamp };
+        static readonly string[] MaskToolNames = { "Hard", "Soft", "Blur", "Eraser", "Gradient", "Stamp" };
         static readonly string[] MaskChannelNames = { "R", "G", "B", "White", "Black" };
         static readonly string[] TabNames = { "Texture Painter", "Mask Painter" };
         static readonly TextureWrapMode[] WrapOptions = { TextureWrapMode.Repeat, TextureWrapMode.Repeat, TextureWrapMode.Clamp, TextureWrapMode.Mirror, TextureWrapMode.MirrorOnce };
@@ -730,15 +730,28 @@ namespace MeshTexturePainter
             var tool = settings.Current;
 
             bool gradient = settings.tool == PaintTool.Gradient;
+            bool stamp = settings.tool == PaintTool.Stamp;
+            bool tipTool = BrushSettings.UsesTip(settings.tool);
+            if (tipTool) DrawTip(settings, tool);
             if (gradient)
                 tool.radius = EditorGUILayout.Slider(new GUIContent("Width (px)", "Thickness of the gradient line. [ and ] or Ctrl + scroll"), tool.radius * 2f, 2f, 1000f) * 0.5f;
+            else if (tipTool)
+                tool.radius = EditorGUILayout.Slider(new GUIContent("Size (px)", "Longer side of the texture on screen. [ and ] or Ctrl + scroll"), tool.radius * 2f, 2f, 2000f) * 0.5f;
             else
                 tool.radius = EditorGUILayout.Slider(new GUIContent("Radius (px)", "[ and ] or Ctrl + scroll"), tool.radius, 1f, 500f);
             string strengthLabel = BrushSettings.IsStrokeBuffered(settings.tool) ? "Opacity" : "Strength";
             tool.strength = EditorGUILayout.Slider(new GUIContent(strengthLabel, "Shift + [ and ] or Ctrl + Shift + scroll"), tool.strength, 0f, 1f);
             if (BrushSettings.UsesHardness(settings.tool))
                 tool.hardness = EditorGUILayout.Slider(new GUIContent("Hardness", gradient ? "How sharp the long edges of the line are. Lower values fade them out." : null), tool.hardness, 0f, 1f);
-            if (!gradient)
+            if (tipTool)
+                tool.angle = EditorGUILayout.Slider(new GUIContent("Angle", "Turns the texture counterclockwise on screen."), tool.angle, -180f, 180f);
+            if (settings.tool == PaintTool.CustomBrush)
+            {
+                settings.tipRotation = (TipRotation)EditorGUILayout.EnumPopup(new GUIContent("Rotation",
+                    "Fixed: every dab at the angle.\nFollow Stroke: the dabs turn with the direction you paint in.\nRandom: every dab turned randomly, for splatter and foliage."), settings.tipRotation);
+                settings.tipErase = EditorGUILayout.Toggle(new GUIContent("Erase", "Erase in the shape of the brush instead of painting."), settings.tipErase);
+            }
+            if (!gradient && !stamp)
                 tool.spacing = EditorGUILayout.Slider(new GUIContent("Spacing", "Distance between dabs as a fraction of the radius"), tool.spacing, 0.02f, 1f);
             if (settings.tool == PaintTool.Blur)
                 settings.blurSize = EditorGUILayout.Slider(new GUIContent("Blur Size", "Blur kernel as a fraction of the radius"), settings.blurSize, 0.02f, 1f);
@@ -757,14 +770,17 @@ namespace MeshTexturePainter
             }
             if (gradient)
                 EditorGUILayout.HelpBox("Drag from the start to the end of the line in the Scene view. Hold Shift to snap the angle to 15° steps.", MessageType.None);
+            if (stamp && tool.TipTexture != null)
+                EditorGUILayout.HelpBox("Click in the Scene view to stamp. Keep the button down to move the stamp; it is placed when you release.", MessageType.None);
 
             strokeFoldout = EditorGUILayout.Foldout(strokeFoldout, "Stroke Options", true);
             if (strokeFoldout)
             {
                 EditorGUI.indentLevel++;
-                using (new EditorGUI.DisabledScope(gradient))
+                using (new EditorGUI.DisabledScope(gradient || tipTool))
                     settings.falloffShape = (FalloffShape)EditorGUILayout.EnumPopup(new GUIContent("Falloff Shape", gradient
                         ? "The gradient always paints the line as seen on screen."
+                        : tipTool ? "Textures are always laid flat on the screen."
                         : "Projected: a circle on screen, paints everything visible inside it.\nSphere: a ball around the surface under the cursor, never reaches surfaces behind."), settings.falloffShape);
                 settings.occlusion = EditorGUILayout.Toggle(new GUIContent("Occlusion", "Only paint surfaces visible from the camera."), settings.occlusion);
                 settings.backfaceCulling = EditorGUILayout.Toggle(new GUIContent("Backface Culling", "Do not paint faces pointing away from the camera."), settings.backfaceCulling);
@@ -780,7 +796,7 @@ namespace MeshTexturePainter
                     using (new EditorGUI.DisabledScope(!settings.mirror))
                         settings.mirrorAxis = (MirrorAxis)EditorGUILayout.EnumPopup(settings.mirrorAxis);
                 }
-                using (new EditorGUI.DisabledScope(gradient))
+                using (new EditorGUI.DisabledScope(gradient || stamp))
                 {
                     settings.pressureSize = EditorGUILayout.Toggle("Pen Pressure → Size", settings.pressureSize);
                     settings.pressureStrength = EditorGUILayout.Toggle("Pen Pressure → Strength", settings.pressureStrength);
@@ -792,6 +808,30 @@ namespace MeshTexturePainter
                 settings.Save();
                 SceneView.RepaintAll();
             }
+        }
+
+        /// <summary>The black and white texture of the custom brush or stamp.</summary>
+        static void DrawTip(BrushSettings settings, ToolSettings tool)
+        {
+            bool stamp = settings.tool == PaintTool.Stamp;
+            tool.TipTexture = (Texture2D)EditorGUILayout.ObjectField(new GUIContent(stamp ? "Stamp" : "Brush Tip",
+                "A black and white texture: white paints, black leaves the surface as it is, grey paints partly. Transparent parts never paint."),
+                tool.TipTexture, typeof(Texture2D), false, GUILayout.Height(64));
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PrefixLabel(new GUIContent("Defaults", "Stamps that come with the painter. Any texture of the project works too."));
+                foreach (var guid in BrushSettings.DefaultStampGuids)
+                {
+                    var preset = AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(guid));
+                    if (preset != null && GUILayout.Toggle(tool.TipTexture == preset, new GUIContent(preset, preset.name), "Button", GUILayout.Width(32), GUILayout.Height(32)))
+                        tool.TipTexture = preset;
+                }
+            }
+            tool.invert =EditorGUILayout.Toggle(new GUIContent("Invert", "Black paints and white does not, for black symbols on a white or transparent background."), tool.invert);
+            if (tool.TipTexture == null)
+                EditorGUILayout.HelpBox(stamp
+                    ? "Pick a black and white texture to stamp, such as a symbol, a logo or a pattern."
+                    : "Pick a black and white texture as the brush tip, such as a splatter, chalk or fur strands.", MessageType.Info);
         }
 
         static void DrawMaskChannels(BrushSettings settings)
@@ -1255,17 +1295,19 @@ namespace MeshTexturePainter
                 ? "Left drag: paint    Alt + drag: orbit (as usual)\n" +
                   "[ / ]: radius    Shift + [ / ]: strength\n" +
                   "Ctrl + scroll: radius    Ctrl + Shift + scroll: strength\n" +
-                  "3 Hard   4 Soft   5 Blur   7 Eraser   8 Gradient   (or numpad 1, 2, 3, 5, 6)\n" +
+                  "3 Hard   4 Soft   5 Blur   7 Eraser   8 Gradient   0 Stamp   (or numpad 1, 2, 3, 5, 6, 8)\n" +
                   "R, G and B add up where they overlap; the Eraser clears the selected channel\n" +
                   "Gradient: drag from start to end, Shift snaps the angle\n" +
+                  "Stamp: click, keep the button down to move it, release to place\n" +
                   "Esc: cancel stroke    Numpad keys need Num Lock on\n" +
                   "Right mouse + WASD / QE: fly as usual (painting keys pause meanwhile)\n" +
                   "Ctrl + Z / Ctrl + Y: undo / redo (Unity undo)"
                 : "Left drag: paint    Alt + drag: orbit (as usual)\n" +
                   "[ / ]: radius    Shift + [ / ]: strength\n" +
                   "Ctrl + scroll: radius    Ctrl + Shift + scroll: strength\n" +
-                  "3 Hard   4 Soft   5 Blur   6 Blend   7 Eraser   8 Gradient   (or numpad 1 – 6)\n" +
+                  "3 Hard   4 Soft   5 Blur   6 Blend   7 Eraser   8 Gradient   9 Custom   0 Stamp   (or numpad 1 – 8)\n" +
                   "Gradient: drag from start to end, Shift snaps the angle\n" +
+                  "Stamp: click, keep the button down to move it, release to place\n" +
                   "C or numpad 0: pick colour under cursor    Esc: cancel stroke\n" +
                   "Numpad keys need Num Lock on\n" +
                   "Right mouse + WASD / QE: fly as usual (painting keys pause meanwhile)\n" +

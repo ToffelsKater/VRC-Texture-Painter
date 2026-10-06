@@ -68,7 +68,7 @@ the mask even while its effect is off.
 
 ## All features
 
-- **Tools:** Hard, Soft, Blur, Color Blend (turns hard borders into smooth gradients without smearing), Eraser and Gradient, with pen pressure.
+- **Tools:** Hard, Soft, Blur, Color Blend (turns hard borders into smooth gradients without smearing), Eraser, Gradient, Custom (brush tips from any black and white texture) and Stamp (symbols and patterns, also in the Mask Painter), with pen pressure.
 - **Mask Painter:** paint shader masks per R, G and B channel, with Fill, Clear, Invert and a preview on the model.
 - **UV aware:** paint across seams, on mirrored and overlapping UVs, any UV channel, and UVs outside 0–1.
 - **Several textures at once:** for example a Poiyomi body texture on UV0 and a face decal on UV2, painted in one stroke.

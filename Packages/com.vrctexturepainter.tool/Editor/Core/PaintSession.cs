@@ -120,6 +120,9 @@ namespace MeshTexturePainter
         Vector2 lastGui;
         float distanceToNextDab;
         Vector2 gradientStartGui, gradientEndGui;
+        Vector2 lastDabPixel;
+        float strokeDirection;
+        readonly System.Random random = new System.Random();
 
         // cursor
         Vector2 cursorGui;
@@ -565,6 +568,13 @@ namespace MeshTexturePainter
                 case KeyCode.Keypad5: Settings.tool = PaintTool.Eraser; break;
                 case KeyCode.Alpha8:
                 case KeyCode.Keypad6: Settings.tool = PaintTool.Gradient; break;
+                case KeyCode.Alpha9:
+                case KeyCode.Keypad7:
+                    if (IsMask) return false;
+                    Settings.tool = PaintTool.CustomBrush;
+                    break;
+                case KeyCode.Alpha0:
+                case KeyCode.Keypad8: Settings.tool = PaintTool.Stamp; break;
                 case KeyCode.C:
                 case KeyCode.Keypad0:
                     if (!PickColorUnderCursor()) return false;
@@ -621,6 +631,13 @@ namespace MeshTexturePainter
                 return;
             }
 
+            var tip = BrushSettings.UsesTip(Settings.tool) ? tool.TipTexture : null;
+            if (tip != null)
+            {
+                DrawTipOutline(radiusPoints, tip, tool.angle, ring);
+                return;
+            }
+
             Handles.BeginGUI();
             var center = new Vector3(cursorGui.x, cursorGui.y, 0f);
             // dark brushes (a black mask) get a light outline so the ring stays visible
@@ -640,7 +657,7 @@ namespace MeshTexturePainter
             }
             Handles.EndGUI();
 
-            if (cursorHasHit && Settings.falloffShape == FalloffShape.Sphere && Settings.tool != PaintTool.Gradient)
+            if (cursorHasHit && Settings.falloffShape == FalloffShape.Sphere && Settings.tool != PaintTool.Gradient && !BrushSettings.UsesTip(Settings.tool))
             {
                 var cam = view.camera;
                 float pixelWorld = 2f / (Mathf.Abs(cam.projectionMatrix.m11) * cam.pixelHeight);
@@ -648,6 +665,34 @@ namespace MeshTexturePainter
                 Handles.color = new Color(ring.r, ring.g, ring.b, 0.5f);
                 Handles.DrawWireDisc(cursorHit.point, cursorHit.normal, tool.radius * pixelWorld * depth);
             }
+        }
+
+        /// <summary>The frame of a stamp or brush texture at the cursor, turned by its angle, with a tick on its top edge.</summary>
+        void DrawTipOutline(float radiusPoints, Texture tip, float angle, Color color)
+        {
+            float longer = Mathf.Max(tip.width, tip.height);
+            float hx = radiusPoints * tip.width / longer, hy = radiusPoints * tip.height / longer;
+            // GUI y points down, the angle turns counterclockwise on screen
+            float rad = angle * Mathf.Deg2Rad;
+            var right = new Vector2(Mathf.Cos(rad), -Mathf.Sin(rad));
+            var up = new Vector2(-Mathf.Sin(rad), -Mathf.Cos(rad));
+            Vector3 c = cursorGui;
+            var frame = new Vector3[]
+            {
+                c + (Vector3)(-right * hx + up * hy), c + (Vector3)(right * hx + up * hy),
+                c + (Vector3)(right * hx - up * hy), c + (Vector3)(-right * hx - up * hy),
+                c + (Vector3)(-right * hx + up * hy)
+            };
+            Vector3 tickStart = c + (Vector3)(up * hy), tickEnd = c + (Vector3)(up * (hy + 8f));
+
+            Handles.BeginGUI();
+            Handles.color = color.grayscale < 0.2f ? new Color(1f, 1f, 1f, 0.6f) : new Color(0f, 0f, 0f, 0.6f);
+            Handles.DrawAAPolyLine(4f, frame);
+            Handles.DrawAAPolyLine(4f, tickStart, tickEnd);
+            Handles.color = color;
+            Handles.DrawAAPolyLine(2f, frame);
+            Handles.DrawAAPolyLine(2f, tickStart, tickEnd);
+            Handles.EndGUI();
         }
 
         /// <summary>The band the gradient paints, with its start and end colours.</summary>
@@ -685,6 +730,11 @@ namespace MeshTexturePainter
                 view.ShowNotification(new GUIContent("The active layer is hidden"), 1.5);
                 return;
             }
+            if (BrushSettings.UsesTip(Settings.tool) && Settings.Current.TipTexture == null)
+            {
+                view.ShowNotification(new GUIContent(Settings.tool == PaintTool.Stamp ? "Pick a stamp texture first" : "Pick a brush texture first"), 1.5);
+                return;
+            }
             Engine.PrepareCamera(view.camera, Target);
             BeginStrokeCore(Settings.tool);
             lastGui = e.mousePosition;
@@ -705,6 +755,7 @@ namespace MeshTexturePainter
             if (IsMask && !BrushSettings.UsableForMasks(tool)) tool = PaintTool.SoftBrush;
             strokeTool = tool;
             strokeHadDabs = false;
+            strokeDirection = 0f;
             strokeLayers = parts.Select(p => p.Document.ActiveLayer).ToArray();
             if (tool == PaintTool.Gradient)
             {
@@ -728,7 +779,7 @@ namespace MeshTexturePainter
             }
             else if (BrushSettings.IsStrokeBuffered(tool))
             {
-                var kind = tool == PaintTool.Eraser ? StrokeKind.Erase : StrokeKind.Paint;
+                var kind = tool == PaintTool.Eraser || (tool == PaintTool.CustomBrush && Settings.tipErase) ? StrokeKind.Erase : StrokeKind.Paint;
                 foreach (var part in parts) part.Document.BeginStroke(kind, Settings.color, Settings.For(tool).strength);
             }
             else
@@ -753,6 +804,12 @@ namespace MeshTexturePainter
             {
                 gradientEndGui = e.shift ? SnapAngle(gradientStartGui, e.mousePosition) : e.mousePosition;
                 ApplyGradient(view.camera, HandleUtility.GUIPointToScreenPixelCoordinate(gradientStartGui), HandleUtility.GUIPointToScreenPixelCoordinate(gradientEndGui));
+                return;
+            }
+            if (strokeTool == PaintTool.Stamp)
+            {
+                // the stamp follows the mouse until it is released
+                DabAt(view, e.mousePosition, 1f);
                 return;
             }
             Vector2 p = e.mousePosition;
@@ -794,6 +851,7 @@ namespace MeshTexturePainter
         void DabAt(SceneView view, Vector2 guiPoint, float pressure)
         {
             var tool = Settings.For(strokeTool);
+            if (strokeTool == PaintTool.Stamp) pressure = 1f; // a stamp is placed at its full size and opacity
             var input = new DabInput
             {
                 screenPixel = HandleUtility.GUIPointToScreenPixelCoordinate(guiPoint),
@@ -814,9 +872,15 @@ namespace MeshTexturePainter
         {
             if (!stroking || strokeTool == PaintTool.Gradient) return;
             Engine.PrepareCamera(cam, Target);
+            if (BrushSettings.UsesTip(strokeTool)) input.angle = TipAngle(input.screenPixel);
             if (BrushSettings.IsStrokeBuffered(strokeTool))
             {
-                foreach (var part in parts) Engine.StrokeDab(part.Document, part.Target, cam, Settings, strokeTool, input);
+                foreach (var part in parts)
+                {
+                    // the stamp is one dab: moving it replaces the one drawn before
+                    if (strokeTool == PaintTool.Stamp) part.Document.ClearStrokeMask();
+                    Engine.StrokeDab(part.Document, part.Target, cam, Settings, strokeTool, input);
+                }
             }
             else
             {
@@ -825,6 +889,21 @@ namespace MeshTexturePainter
             }
             strokeHadDabs = true;
             previewDirty = true;
+        }
+
+        /// <summary>Angle of the next custom brush or stamp dab: the set angle, turned with the stroke or randomly for the custom brush.</summary>
+        float TipAngle(Vector2 pixel)
+        {
+            float angle = Settings.For(strokeTool).angle;
+            if (strokeTool == PaintTool.CustomBrush)
+            {
+                var moved = pixel - lastDabPixel;
+                if (strokeHadDabs && moved.sqrMagnitude > 0.25f) strokeDirection = Mathf.Atan2(moved.y, moved.x) * Mathf.Rad2Deg;
+                if (Settings.tipRotation == TipRotation.FollowStroke) angle += strokeDirection;
+                else if (Settings.tipRotation == TipRotation.Random) angle += (float)random.NextDouble() * 360f;
+            }
+            lastDabPixel = pixel;
+            return angle;
         }
 
         internal void EndStroke()

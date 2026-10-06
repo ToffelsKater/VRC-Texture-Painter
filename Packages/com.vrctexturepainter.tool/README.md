@@ -45,8 +45,10 @@ Then open **Tools > VRC Texture Painter**.
 | Blend | `6` / Num `4` | Blends the colours under the brush into a smooth, seamless transition. *Blend Width* sets how long the gradient is; *Flatten* mode pulls the area towards one average colour instead |
 | Eraser | `7` / Num `5` | Removes paint from the layer (makes it transparent) |
 | Gradient | `8` / Num `6` | Drag from one point to another to paint a straight line of the set *Width*, coloured from the first colour at the start to the second colour at the end |
+| Custom | `9` / Num `7` | A brush whose dabs take the shape of a black and white texture (the *Brush Tip*), for splatter, chalk, fur strands or patterns. *Rotation* keeps every dab at the *Angle*, turns the dabs with the stroke, or turns each dab randomly. *Erase* erases in the shape of the tip |
+| Stamp | `0` / Num `8` | Places one black and white texture where you click, for symbols, logos and patterns. Keep the button down to move it; it is placed when you release |
 
-Hard, soft and eraser strokes use **Opacity** the way Photoshop does: a stroke
+Hard, soft, eraser and custom strokes use **Opacity** the way Photoshop does: a stroke
 never builds up past its opacity, however often you go over the same spot.
 Blur and blend use **Strength** per dab.
 
@@ -58,6 +60,19 @@ The gradient only covers the line, not the whole texture, and the line has flat
 ends. *Hardness* softens its long edges, and **Mix Colors In** sets how the two
 colours blend. The line is always measured on screen, so *Falloff Shape* and pen
 pressure do not apply to it.
+
+Six stamps come with the painter: star, heart, sparkle, moon, paw and flower.
+Click one under **Defaults** to use it; the Stamp starts with the star. They
+work as brush tips for the Custom brush too, for example sparkles with random
+rotation.
+
+**Custom** and **Stamp** use any texture in the project as their shape: white
+paints, black leaves the surface as it is, grey paints partly, and transparent
+parts never paint. Turn on **Invert** for black symbols on a white or transparent
+background. **Size** is the longer side of the texture on screen, **Angle** turns
+it counterclockwise, and the texture is always laid flat on the screen, so
+*Falloff Shape* does not apply. Occlusion, backface culling, normal falloff and
+mirror work as usual (the mirrored copy is a mirror image).
 
 The Blend brush reads the colours as they were when the stroke started. Dragging
 it across a border blends that border into a gradient without carrying colour
@@ -115,6 +130,7 @@ every colour channel. Alpha is never painted and stays as it is.
 | Blur | `5` | Softens only the selected channel(s) |
 | Eraser | `7` | Takes the selected channel(s) back to 0 |
 | Gradient | `8` | A line from the mixed R / G / B colour at its start to black at its end |
+| Stamp | `0` | Stamps a black and white texture into the selected channel(s) |
 
 - The **Gradient** has its own **R**, **G** and **B** toggles, which mix its start
   colour. Turn on R and G for a yellow to black gradient, for example. Only the
@@ -137,7 +153,7 @@ every colour channel. Alpha is never painted and stays as it is.
 | `Shift` + `[` / `]` | Less / more strength |
 | `Ctrl` + scroll | Radius |
 | `Ctrl` + `Shift` + scroll | Strength |
-| `3` – `8` or Num `1` – `6` | Hard, Soft, Blur, Blend, Eraser, Gradient |
+| `3` – `9`, `0` or Num `1` – `8` | Hard, Soft, Blur, Blend, Eraser, Gradient, Custom, Stamp |
 | `Shift` while dragging a gradient | Snap the line to 15° steps |
 | `C` or Num `0` | Pick the colour under the cursor |
 | Right mouse + `WASD` / `QE` | Fly through the scene as usual; painting keys are ignored meanwhile |

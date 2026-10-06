@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0-beta.1] - 2026-10-06
+
+### Added
+
+- **Stamp** tool (`0` / Num `8`) in both painters: places a black and white texture (a symbol, logo or pattern) where you click. White paints, black does not, transparency never paints; **Invert** swaps them. Keep the button down to move the stamp before it is placed. In the Mask Painter it stamps the selected channel(s).
+- Six default stamps (star, heart, sparkle, moon, paw, flower), one click away under **Defaults**. They also work as Custom brush tips.
+- **Custom** brush (`9` / Num `7`) in the Texture Painter: dabs take the shape of a black and white texture, with **Angle**, **Rotation** (Fixed, Follow Stroke, Random) and **Erase**.
+
 ## [1.1.1] - 2026-09-19
 
 ### Changed

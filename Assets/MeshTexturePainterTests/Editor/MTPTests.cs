@@ -37,6 +37,7 @@ namespace MeshTexturePainter.Tests
                 MaskPaint();
                 GradientPaint();
                 MaskGradient();
+                StampAndCustomBrush();
             }
             catch (Exception e)
             {
@@ -1387,6 +1388,118 @@ namespace MeshTexturePainter.Tests
             AssetDatabase.DeleteAsset("Assets/MTPTestOut");
 
             session.Dispose();
+            Cleanup(mr, cam);
+        }
+
+        /// <summary>
+        /// Stamp and custom brush: white in the texture paints and black does not; angle and
+        /// invert turn the shape; a moved stamp replaces itself; the custom brush follows the
+        /// stroke and erases; the mask painter stamps only the selected channel.
+        /// </summary>
+        static void StampAndCustomBrush()
+        {
+            var cam = MakeCamera(true);
+            var mr = MakeQuads((R(-1, -1, 1, 1), 0f, R(0, 0, 1, 1)));
+            var session = PaintSession.Create(mr, new[] { 0 }, 0, "_MainTex", Size, Size, 8, new BrushSettings(), out string error);
+            Check(session != null, "stamp session " + error);
+            if (session == null)
+            {
+                Cleanup(mr, cam);
+                return;
+            }
+            var doc = session.Document;
+            var s = session.Settings;
+            var split = SplitTexture(); // left half black, right half white
+            s.color = Color.red;
+            s.stamp.TipTexture = split;
+            s.stamp.radius = 60f; // 1 world unit is 204.8 pixels: the stamp covers u 0.354 - 0.646
+            float A(float u) => Pixel(doc.ActiveLayer.texture, u, 0.5f).a;
+
+            void Stamp(params Vector3[] path)
+            {
+                session.BeginStrokeCore(PaintTool.Stamp);
+                foreach (var world in path) session.ApplyDab(cam, Dab(cam, session.Target, world, s.stamp.radius));
+                session.EndStroke();
+            }
+
+            // the default stamps ship with the package; a new stamp starts with the star
+            var defaults = BrushSettings.DefaultStampGuids.Select(g => AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(g))).ToArray();
+            Check(defaults.All(t => t != null && t.wrapMode == TextureWrapMode.Clamp && t.mipmapCount > 1) && new BrushSettings().stamp.TipTexture == defaults[0],
+                $"default stamps load clamped with mipmaps [{string.Join(", ", defaults.Select(t => t != null ? t.name : "missing"))}]");
+            s.stamp.TipTexture = defaults[0];
+            Stamp(Vector3.zero);
+            float starCentre = A(0.5f), starCorner = Pixel(doc.ActiveLayer.texture, 0.37f, 0.63f).a;
+            Check(starCentre > 0.99f && starCorner < 0.01f, $"the default star stamps its shape centre={starCentre:F2} corner={starCorner:F2}");
+            session.History.PerformUndo();
+            s.stamp.TipTexture = split;
+
+            Stamp(Vector3.zero);
+            Check(A(0.6f) > 0.99f && A(0.4f) < 0.01f && A(0.7f) < 0.01f, $"the white half of the texture is stamped {A(0.4f):F2} {A(0.6f):F2} {A(0.7f):F2}");
+            session.History.PerformUndo();
+
+            s.stamp.angle = 180f;
+            Stamp(Vector3.zero);
+            Check(A(0.4f) > 0.99f && A(0.6f) < 0.01f, $"a stamp turned by 180 degrees {A(0.4f):F2} {A(0.6f):F2}");
+            session.History.PerformUndo();
+            s.stamp.angle = 0f;
+
+            s.stamp.invert = true;
+            Stamp(Vector3.zero);
+            Check(A(0.4f) > 0.99f && A(0.6f) < 0.01f && A(0.3f) < 0.01f, $"an inverted stamp paints the black half {A(0.4f):F2} {A(0.6f):F2} {A(0.3f):F2}");
+            session.History.PerformUndo();
+            s.stamp.invert = false;
+
+            Stamp(new Vector3(-0.5f, 0f, 0f), new Vector3(0.5f, 0f, 0f));
+            Check(A(0.3f) < 0.01f && A(0.8f) > 0.99f, $"a moved stamp replaces itself {A(0.3f):F2} {A(0.8f):F2}");
+            session.History.PerformUndo();
+
+            // custom brush: a stroke to the left with the tip turned along it paints past its start
+            s.custom.TipTexture = split;
+            s.custom.radius = 30f;
+            s.custom.strength = 1f;
+            float PaintLeft(TipRotation rotation)
+            {
+                s.tipRotation = rotation;
+                session.BeginStrokeCore(PaintTool.CustomBrush);
+                for (float x = 0.3f; x >= -0.3f; x -= 0.02f) session.ApplyDab(cam, Dab(cam, session.Target, new Vector3(x, 0f, 0f), 30f));
+                session.EndStroke();
+                float beyond = A(0.31f);
+                session.History.PerformUndo();
+                return beyond;
+            }
+            float fixedTip = PaintLeft(TipRotation.Fixed), followTip = PaintLeft(TipRotation.FollowStroke);
+            Check(fixedTip < 0.01f && followTip > 0.99f, $"the custom brush tip follows the stroke fixed={fixedTip:F2} follow={followTip:F2}");
+
+            s.tipRotation = TipRotation.Fixed;
+            s.tipErase = true;
+            session.FillLayer(Color.red);
+            session.BeginStrokeCore(PaintTool.CustomBrush);
+            session.ApplyDab(cam, Dab(cam, session.Target, Vector3.zero, 30f));
+            session.EndStroke();
+            Check(A(0.53f) < 0.01f && A(0.47f) > 0.99f, $"the custom brush erases in its shape {A(0.47f):F2} {A(0.53f):F2}");
+            session.Dispose();
+
+            // the mask painter stamps the selected channel and has no custom brush
+            var specs = new[] { new PartSpec { textureProperty = "_DetailMask", uvChannel = 0, width = Size, height = Size } };
+            var mask = PaintSession.Create(mr, new[] { 0 }, specs, 8, new BrushSettings(), out error, PaintMode.Mask);
+            Check(mask != null, "stamp mask session " + error);
+            if (mask != null)
+            {
+                Check(!mask.HandleKeyEvent(new Event { type = EventType.KeyDown, keyCode = KeyCode.Alpha9 })
+                    && mask.HandleKeyEvent(new Event { type = EventType.KeyDown, keyCode = KeyCode.Alpha0 }) && mask.Settings.tool == PaintTool.Stamp,
+                    "the mask painter has the stamp (0) but no custom brush (9)");
+                mask.Settings.stamp.TipTexture = split;
+                mask.Settings.stamp.radius = 60f;
+                mask.Settings.maskChannel = MaskChannel.Green;
+                mask.BeginStrokeCore(PaintTool.Stamp);
+                mask.ApplyDab(cam, Dab(cam, mask.Target, Vector3.zero, 60f));
+                mask.EndStroke();
+                Color M(float u) => Pixel(mask.Document.ActiveLayer.texture, u, 0.5f);
+                Check(M(0.6f).g > 0.99f && M(0.6f).r < 0.01f && M(0.4f).g < 0.01f, $"the mask stamp paints only green {Str(M(0.4f))} {Str(M(0.6f))}");
+                mask.Dispose();
+            }
+
+            UnityEngine.Object.DestroyImmediate(split);
             Cleanup(mr, cam);
         }
 

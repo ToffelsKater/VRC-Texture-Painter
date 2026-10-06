@@ -13,7 +13,21 @@ namespace MeshTexturePainter
         ColorBlend = 3,
         Eraser = 4,
         /// <summary>A straight band between two points, coloured with a gradient along it.</summary>
-        Gradient = 5
+        Gradient = 5,
+        /// <summary>A brush whose dabs take the shape of a black and white texture.</summary>
+        CustomBrush = 6,
+        /// <summary>One black and white texture placed where you click.</summary>
+        Stamp = 7
+    }
+
+    public enum TipRotation
+    {
+        /// <summary>Every dab at the set angle.</summary>
+        Fixed = 0,
+        /// <summary>Dabs turn with the direction of the stroke.</summary>
+        FollowStroke = 1,
+        /// <summary>Every dab turned by a random angle.</summary>
+        Random = 2
     }
 
     public enum FalloffShape
@@ -125,6 +139,31 @@ namespace MeshTexturePainter
         [Range(0f, 1f)] public float hardness = 0.5f;
         [Range(0.01f, 1f)] public float spacing = 0.1f;
 
+        /// <summary>Stamp and custom brush: asset GUID of the black and white texture that shapes each dab.</summary>
+        public string tip = "";
+        /// <summary>Stamp and custom brush: degrees the texture is turned counterclockwise on screen.</summary>
+        public float angle;
+        /// <summary>Stamp and custom brush: black paints instead of white.</summary>
+        public bool invert;
+
+        [NonSerialized] Texture2D tipTexture;
+
+        /// <summary>The texture of `tip`. Textures that are not assets are kept until the next script reload.</summary>
+        public Texture2D TipTexture
+        {
+            get
+            {
+                if (tipTexture == null && !string.IsNullOrEmpty(tip))
+                    tipTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(tip));
+                return tipTexture;
+            }
+            set
+            {
+                tipTexture = value;
+                tip = value != null ? AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(value)) : "";
+            }
+        }
+
         public ToolSettings() { }
 
         public ToolSettings(float radius, float strength, float hardness, float spacing)
@@ -140,6 +179,13 @@ namespace MeshTexturePainter
     public class BrushSettings
     {
         const string PrefsKey = "MeshTexturePainter.BrushSettings";
+
+        /// <summary>Asset GUIDs of the stamps in the package's Stamps folder: star, heart, sparkle, moon, paw, flower.</summary>
+        public static readonly string[] DefaultStampGuids =
+        {
+            "af3981ec06f14583af1d7dfe3432ea75", "c5ae04a881234cfc9e28e83e905f2449", "ede4a4af0aa4469d82a8b3aece28f101",
+            "8555b3f1fc8a4dc1a74a7382f4a04779", "6c6a34544f724b9dbccd7d01491608b0", "ca10344ca5ac460581069004d825834a"
+        };
 
         [NonSerialized] string prefsKey = PrefsKey;
 
@@ -158,6 +204,14 @@ namespace MeshTexturePainter
         public ToolSettings eraser = new ToolSettings(40f, 1f, 0.5f, 0.08f);
         /// <summary>Gradient: radius is half the width of the band, hardness its edge softness.</summary>
         public ToolSettings gradient = new ToolSettings(20f, 1f, 1f, 0.1f);
+        /// <summary>Custom brush and stamp: radius is half the longer side of the texture on screen.</summary>
+        public ToolSettings custom = new ToolSettings(40f, 1f, 1f, 0.25f);
+        public ToolSettings stamp = new ToolSettings(100f, 1f, 1f, 1f) { tip = DefaultStampGuids[0] };
+
+        /// <summary>Custom brush: how the dabs turn along the stroke.</summary>
+        public TipRotation tipRotation = TipRotation.Fixed;
+        /// <summary>Custom brush: erase in the shape of the texture instead of painting.</summary>
+        public bool tipErase;
 
         /// <summary>Blur kernel size as a fraction of the brush radius.</summary>
         [Range(0.02f, 1f)] public float blurSize = 0.25f;
@@ -193,16 +247,20 @@ namespace MeshTexturePainter
                 case PaintTool.Blur: return blur;
                 case PaintTool.ColorBlend: return blend;
                 case PaintTool.Gradient: return gradient;
+                case PaintTool.CustomBrush: return custom;
+                case PaintTool.Stamp: return stamp;
                 default: return eraser;
             }
         }
 
-        public static bool UsesColor(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Gradient;
-        public static bool UsesHardness(PaintTool t) => t != PaintTool.HardBrush;
-        /// <summary>Tools painted into the stroke mask and baked into the layer when the stroke ends. The gradient redraws its whole line instead of adding dabs.</summary>
-        public static bool IsStrokeBuffered(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Eraser || t == PaintTool.Gradient;
-        /// <summary>The mask painter has no colour blend brush; blur covers smoothing masks.</summary>
-        public static bool UsableForMasks(PaintTool t) => t != PaintTool.ColorBlend;
+        public static bool UsesColor(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Gradient || UsesTip(t);
+        public static bool UsesHardness(PaintTool t) => t != PaintTool.HardBrush && !UsesTip(t);
+        /// <summary>Tools whose dabs are shaped by a texture, always laid flat on the screen.</summary>
+        public static bool UsesTip(PaintTool t) => t == PaintTool.CustomBrush || t == PaintTool.Stamp;
+        /// <summary>Tools painted into the stroke mask and baked into the layer when the stroke ends. The gradient redraws its whole line and the stamp its one dab instead of adding dabs.</summary>
+        public static bool IsStrokeBuffered(PaintTool t) => t == PaintTool.HardBrush || t == PaintTool.SoftBrush || t == PaintTool.Eraser || t == PaintTool.Gradient || UsesTip(t);
+        /// <summary>The mask painter has no colour blend brush (blur covers smoothing masks) and no custom brush.</summary>
+        public static bool UsableForMasks(PaintTool t) => t != PaintTool.ColorBlend && t != PaintTool.CustomBrush;
 
         public static BrushSettings Load() => Load(PrefsKey);
 

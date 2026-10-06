@@ -26,7 +26,7 @@ float4 _CamForward;     // xyz camera forward
 float _ProjScale;       // projection[1,1] * pixelHeight / 2
 float _PixelWorld;      // world size of one pixel at view depth 1 (orthographic: absolute)
 
-float _BrushShape;      // 0 projected, 1 sphere, 2 line on screen (gradient)
+float _BrushShape;      // 0 projected, 1 sphere, 2 line on screen (gradient), 3 texture on screen (custom brush, stamp)
 float _HardEdge;        // 1 hard brush (antialiased disc), 0 smooth falloff
 float _Hardness;
 float _Occlusion;
@@ -36,6 +36,11 @@ float _CullTriangles;
 float _UVFlip;
 
 sampler2D _DepthMap;
+
+// Texture shape: white paints, black does not, transparency never paints
+sampler2D _TipTex;
+float4 _TipRot;         // xy cos / sin of the counterclockwise angle, z 1 = invert, w mip level
+float4 _TipAspect;      // xy half size of the texture per pixel of radius (1 on its longer side), z 1 = sRGB sampled (convert back to stored values)
 
 // Texture size of the document (w, h, 1/w, 1/h)
 float4 _TexSize;
@@ -76,8 +81,10 @@ bool TriangleNearBrush(float4 tri)
     float2 px = WorldToScreenPixel(c, w);
     if (w < r + 1e-4) return true; // crosses the camera plane, keep it
     float rpx = r * _ProjScale / w;
-    float dist = _BrushShape > 1.5 ? SegmentDistance(px, _BrushCenter.xy, _LineEnd.xy) : length(px - _BrushCenter.xy);
-    return dist <= _BrushCenter.z + rpx + 2.0;
+    float dist = _BrushShape > 1.5 && _BrushShape < 2.5 ? SegmentDistance(px, _BrushCenter.xy, _LineEnd.xy) : length(px - _BrushCenter.xy);
+    // a texture reaches into the corners of its square
+    float reach = _BrushShape > 2.5 ? _BrushCenter.z * 1.4143 : _BrushCenter.z;
+    return dist <= reach + rpx + 2.0;
 }
 
 // Radial profile of the brush for a normalized distance d (0 centre, 1 edge).
@@ -118,6 +125,21 @@ float LineProfile(float2 px, out float t)
     return BrushProfile(across / max(_BrushCenter.z, 1e-4), _BrushCenter.z) * ends;
 }
 
+// Texture shape: the texture laid flat on the screen, centred on the brush, its
+// longer side 2 * radius, turned by its angle. Grey values count as stored.
+float TipProfile(float2 px)
+{
+    float2 rel = px - _BrushCenter.xy;
+    float2 local = float2(rel.x * _TipRot.x + rel.y * _TipRot.y, rel.y * _TipRot.x - rel.x * _TipRot.y);
+    float2 uv = local / (2.0 * max(_BrushCenter.z, 1e-4) * _TipAspect.xy) + 0.5;
+    if (any(uv < 0.0) || any(uv > 1.0)) return 0.0;
+    float4 c = tex2Dlod(_TipTex, float4(uv, 0, _TipRot.w));
+    if (_TipAspect.z > 0.5)
+        c.rgb = float3(LinearToGammaSpaceExact(c.r), LinearToGammaSpaceExact(c.g), LinearToGammaSpaceExact(c.b));
+    float lum = dot(c.rgb, float3(0.299, 0.587, 0.114));
+    return saturate((_TipRot.z > 0.5 ? 1.0 - lum : lum) * c.a);
+}
+
 // Full brush weight for a surface point: shape, facing and visibility. t is the
 // position along the line of the line shape. wpos / wnormal must already be mirrored.
 float BrushWeightT(float3 wpos, float3 wnormal, out float t)
@@ -125,7 +147,13 @@ float BrushWeightT(float3 wpos, float3 wnormal, out float t)
     t = 0.0;
     float2 px; float w;
     float a;
-    if (_BrushShape > 1.5)
+    if (_BrushShape > 2.5)
+    {
+        px = WorldToScreenPixel(wpos, w);
+        if (w <= 0) return 0.0;
+        a = TipProfile(px);
+    }
+    else if (_BrushShape > 1.5)
     {
         px = WorldToScreenPixel(wpos, w);
         if (w <= 0) return 0.0;
