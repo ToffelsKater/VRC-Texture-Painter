@@ -300,6 +300,15 @@ figure { margin: 0; }
 .mask-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
 .mask-card p { margin: 0; color: var(--muted); font-size: 15px; }
 
+/* copy next to two portrait recordings */
+.stamp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
+  gap: 24px 32px;
+  align-items: start;
+}
+.stamp-grid .showcase-copy { align-self: center; }
+
 /* full size view */
 .lightbox {
   width: min(1600px, 100vw - 32px);
@@ -482,6 +491,8 @@ details li + li { margin-top: 4px; }
 @media (max-width: 920px) {
   .hero { grid-template-columns: 1fr; padding-top: 48px; gap: 36px; }
   .problems, .mask-grid { grid-template-columns: 1fr; }
+  .stamp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stamp-grid .showcase-copy { grid-column: 1 / -1; }
   .showcase, .showcase.flip { grid-template-columns: 1fr; gap: 24px; }
   .showcase.flip .showcase-media { order: 0; }
   .extras { grid-template-columns: 1fr; }
@@ -491,6 +502,7 @@ details li + li { margin-top: 4px; }
 
 @media (max-width: 620px) {
   .topnav { display: none; }
+  .stamp-grid { grid-template-columns: 1fr; }
   .lead { font-size: 17px; }
   .copy-field { flex-direction: column; }
 }
